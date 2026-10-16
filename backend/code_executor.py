@@ -1,13 +1,14 @@
-"""Sandboxed code execution abstraction for the Physics Agent.
+"""Sandboxed code execution abstraction for the Physics Agent and the
+Modeling Agent's anchorbrowser-backed car-spec lookup.
 
 `LocalSubprocessExecutor` is the POC stand-in: it runs generated code as a
 real OS subprocess (isolated from the backend's own process, with a
-timeout) so the Physics Agent's "write code, then execute it" behavior
-works end to end without Daytona credentials.
+timeout) so sandboxed-style execution works end to end without Daytona
+credentials.
 
-`DaytonaExecutor` is the intended production backend per
-docs/physics-agent-spec.md — swap it in once Daytona access is available.
-Same interface, so nothing above this layer needs to change.
+`DaytonaExecutor` is the real production backend — used automatically via
+`default_executor()` once `DAYTONA_API_KEY` is set. Same interface, so
+nothing above this layer needs to change.
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 
 class CodeExecutionError(Exception):
@@ -34,7 +36,13 @@ class ExecutionOutcome:
 
 
 class CodeExecutor:
-    def run(self, code: str, input_data: dict, timeout_s: float = 5.0) -> ExecutionOutcome:
+    def run(
+        self,
+        code: str,
+        input_data: dict,
+        timeout_s: float = 5.0,
+        env_vars: Optional[dict[str, str]] = None,
+    ) -> ExecutionOutcome:
         raise NotImplementedError
 
 
@@ -45,9 +53,16 @@ class LocalSubprocessExecutor(CodeExecutor):
     process isolation + a timeout. Good enough for local POC testing.
     """
 
-    def run(self, code: str, input_data: dict, timeout_s: float = 5.0) -> ExecutionOutcome:
+    def run(
+        self,
+        code: str,
+        input_data: dict,
+        timeout_s: float = 5.0,
+        env_vars: Optional[dict[str, str]] = None,
+    ) -> ExecutionOutcome:
         sandbox_id = f"local-{uuid.uuid4().hex[:8]}"
         start = time.perf_counter()
+        env = {**os.environ, **env_vars} if env_vars else None
         with tempfile.TemporaryDirectory() as tmp_dir:
             script_path = Path(tmp_dir) / "solver.py"
             script_path.write_text(code)
@@ -58,6 +73,7 @@ class LocalSubprocessExecutor(CodeExecutor):
                     capture_output=True,
                     text=True,
                     timeout=timeout_s,
+                    env=env,
                 )
             except subprocess.TimeoutExpired as exc:
                 raise CodeExecutionError(f"execution timed out after {timeout_s}s") from exc
@@ -82,11 +98,10 @@ class DaytonaExecutor(CodeExecutor):
     the `daytona` SDK reads these itself; nothing is passed explicitly here
     so a key is never handled/logged by our own code.
 
-    `SOLVER_CODE` (see physics_agent.py) reads its input via
-    `json.load(sys.stdin)`. The SDK's `code_run` has no stdin parameter, so
-    we prepend a small stub that monkey-patches `sys.stdin` with the input
-    JSON before the solver code runs — the solver script itself is
-    identical between executors.
+    Generated code reads its input via `json.load(sys.stdin)`. The SDK's
+    `code_run` has no stdin parameter, so we prepend a small stub that
+    monkey-patches `sys.stdin` with the input JSON before the real code
+    runs — the script itself is identical between executors.
     """
 
     def __init__(self):
@@ -94,8 +109,16 @@ class DaytonaExecutor(CodeExecutor):
 
         self._daytona = Daytona()
 
-    def run(self, code: str, input_data: dict, timeout_s: float = 5.0) -> ExecutionOutcome:
+    def run(
+        self,
+        code: str,
+        input_data: dict,
+        timeout_s: float = 5.0,
+        env_vars: Optional[dict[str, str]] = None,
+    ) -> ExecutionOutcome:
         import json as _json
+
+        from daytona import CreateSandboxFromSnapshotParams
 
         wrapped_code = (
             "import sys, io\n"
@@ -103,7 +126,8 @@ class DaytonaExecutor(CodeExecutor):
             + code
         )
 
-        sandbox = self._daytona.create()
+        params = CreateSandboxFromSnapshotParams(env_vars=env_vars) if env_vars else None
+        sandbox = self._daytona.create(params)
         sandbox_id = sandbox.id
         start = time.perf_counter()
         try:

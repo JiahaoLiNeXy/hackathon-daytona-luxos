@@ -3,9 +3,11 @@ problem spec the Physics Agent expects.
 
 See docs/modeling-agent-spec.md for the full contract. This is the POC
 implementation: deterministic heuristics for every step (scale resolution,
-curve classification, ground-profile derivation, speed/mass/downforce
-resolution). No LLM call yet and no anchorbrowser/SurrealDB — those are
-extension points, called out explicitly below, not silently skipped.
+curve classification, ground-profile derivation, speed/downforce
+resolution). Car mass now has a real anchorbrowser-backed lookup
+(car_spec_lookup.py) for entities outside the local KNOWN_SPECS cache. No
+LLM call yet for curve classification, and no SurrealDB — still-documented
+extension points, not silently skipped.
 """
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ import math
 import re
 from typing import Optional
 
+from car_spec_lookup import CarSpecLookup
 from schemas import (
     Curve,
     ExtractionOutput,
@@ -51,6 +54,9 @@ LEVEL_EPSILON_M = 0.3  # min vertical offset to call it "lower_level"
 
 
 class ModelingAgent:
+    def __init__(self, car_spec_lookup: Optional[CarSpecLookup] = None):
+        self.car_spec_lookup = car_spec_lookup or CarSpecLookup()
+
     def run(
         self,
         extraction: ExtractionOutput,
@@ -226,4 +232,18 @@ class ModelingAgent:
                     memory["downforce_capability_n"],
                     "memory_recall",
                 )
+
+        # Not cached and not recalled from memory: try a live lookup for the
+        # mass only (see car_spec_lookup.py for why downforce isn't included).
+        # Gracefully returns (None, None) if unconfigured/unavailable/failed.
+        if entities:
+            mass_kg, source_url = self.car_spec_lookup.lookup_mass_kg(entities[0])
+            if mass_kg:
+                mass_source = (
+                    f"looked_up:anchorbrowser({source_url})"
+                    if source_url
+                    else "looked_up:anchorbrowser"
+                )
+                return mass_kg, mass_source, DEFAULT_DOWNFORCE_N, "assumed_default"
+
         return DEFAULT_MASS_KG, "assumed_default", DEFAULT_DOWNFORCE_N, "assumed_default"
