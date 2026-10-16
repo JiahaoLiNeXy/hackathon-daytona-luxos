@@ -1,0 +1,17 @@
+{
+  "name": "roadster-simulation-workbench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 4178 --strictPort",
+    "build": "vite build",
+    "test": "node --test tests/*.test.js",
+    "verify": "npm test && npm run build && node scripts/check-preservation.mjs && node scripts/check-assets.mjs",
+    "package:handoff": "npm run verify && python3 scripts/package-handoff.py"
+  },
+  "dependencies": {
+    "three": "0.185.1",
+    "vite": "6.4.2"
+  }
+}
