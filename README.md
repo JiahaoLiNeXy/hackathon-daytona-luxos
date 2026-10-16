@@ -4,6 +4,10 @@
 
 [Agent-flow visualization with Arize](docs/arize-tracing.md)
 
+[Roadster UI overlay handoff](frontend/roadster/README.md) · [Integration API](frontend/roadster/docs/INTEGRATION.md)
+
+[Download the Roadster handoff ZIP](deliverables/roadster-ui-handoff.zip) — built app, source, four UI modules, models and calling example. See the integration guide to load the transparent UI into the desktop overlay over the phone/FaceTime view.
+
 ## Capture (Phase 1, step 1)
 
 Grabs one camera frame and one voice clip from the Mac and wraps them as `LuxInput` JSON for the processor layer.
