@@ -73,7 +73,19 @@ def main():
         print(json.dumps({"status": "error", "message": f"unexpected error: {exc}"}))
         return
 
-    result = (parsed.get("data") or {}).get("result") or {}
+    # `data.result` comes back as a JSON-encoded string, not a nested
+    # object -- confirmed against the live API (not documented explicitly).
+    raw_result = (parsed.get("data") or {}).get("result")
+    if isinstance(raw_result, str):
+        try:
+            result = json.loads(raw_result)
+        except json.JSONDecodeError:
+            result = {}
+    elif isinstance(raw_result, dict):
+        result = raw_result
+    else:
+        result = {}
+
     print(json.dumps({
         "status": "ok",
         "mass_kg": result.get("mass_kg"),
