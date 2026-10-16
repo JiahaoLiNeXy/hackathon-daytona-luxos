@@ -3,9 +3,9 @@
 ## Position in the pipeline
 
 ```
-Extraction Agent → Modeling Agent → Physics Agent → Narration Agent → Visualization
-(raw perception)   (problem          (solve)         (summarize)      (render,
-                     formulation,                                      non-agentic)
+Extraction Agent → Modeling Agent → Physics Agent → Visualization
+(raw perception)   (problem          (solve)         (render + narrate,
+                     formulation,                     non-agentic)
                      fills gaps)
 ```
 
@@ -147,7 +147,7 @@ defaults or guess.
    landing x beyond launch x, no NaNs. Failure here is a sandbox/execution
    error, not a silent correction.
 
-## Output contract (handoff to Narration + Visualization)
+## Output contract (handoff to Visualization)
 
 `metrics.outcome` is one of: `"cleared"`, `"fell_short"`, `"landed_normal"`,
 `"lost_traction"`. Note `"lost_traction"` is still a `status: "ok"` result —
@@ -217,8 +217,7 @@ On failure:
   flight phase is treated as pure ballistic (free-fall) motion. Real
   thruster-assisted translation during flight is ignored for the POC; this
   is a known simplification, not an oversight.
-- Deciding what's worth narrating — Narration Agent's job.
-- Rendering — Visualization's job.
+- Deciding what's worth narrating or rendering — Visualization's job.
 - Persisting results to SurrealDB — orchestrator's job, as a side effect of the direct handoff.
 - Any iterative/numeric physics simulation — strictly closed-form kinematics.
 

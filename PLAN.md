@@ -30,8 +30,8 @@ voice (STT)            (structures the        (solves the         (renders
                                                  sandbox)            result)
 ```
 
-Orchestration is a **plain (non-agentic) pipeline**: Extraction → Physics →
-Narration, direct handoff between stages. No LLM-driven re-planning — a fixed
+Orchestration is a **plain (non-agentic) pipeline**: Extraction → Physics,
+direct handoff between stages. No LLM-driven re-planning — a fixed
 sequence is more reliable for a live demo. Each stage's input/output is
 persisted to SurrealDB as a side effect, not as the primary communication
 channel.
@@ -66,25 +66,22 @@ channel.
   projectile motion for the airborne phase. No physics engine, no
   iterative simulation.
 
-### 3. Narration Agent (thin, optional)
-- **Input:** trajectory + metrics from the Physics Agent.
-- **Job:** decide what's worth saying ("clears the gap by 1.2m" vs. "falls
-  1.5m short") and narrate it via **ElevenLabs TTS**.
-- **Why agentic (lightly):** it picks *what* to highlight, not just reads a
-  fixed template.
-
 ### Visualization — not an agent
 - Deterministic renderer (2D canvas) that consumes the trajectory JSON and
   draws the ramp/ground (from extracted geometry) + the car's path.
   Exposes the speed slider that re-triggers the Physics Agent.
-- Kept non-agentic so animation is always correct and fast — no LLM in the
-  render path.
+- Also owns narration: derives what's worth saying from the Physics
+  Agent's metrics (e.g. "clears the gap by 1.2m" vs. "falls short") using a
+  fixed template/ruleset, and speaks it via **ElevenLabs TTS**. No separate
+  narration agent — this stays deterministic, not LLM-driven.
+- Kept non-agentic so animation (and narration) is always correct and fast
+  — no LLM in the render path.
 
 ## Sponsor Tech Mapping
 
 | Product | Layer | Role |
 |---|---|---|
-| **ElevenLabs** | Input / Output | STT for voice description capture; TTS for Narration Agent's spoken summary |
+| **ElevenLabs** | Input / Output | STT for voice description capture; TTS for Visualization's spoken summary |
 | **Daytona** | Processing | Sandbox execution of the Physics Agent's generated solving code |
 | **SurrealDB** | Processing (cross-cutting) | Persists each workflow run (scenario, trajectory, result) for session memory and later optimization/analysis |
 | **Arize** | Processing (cross-cutting) | Tracing/observability on the Extraction and Physics Agent calls — judge-facing trace view |
@@ -98,9 +95,9 @@ channel.
 3. User sets/adjusts launch speed via UI slider.
 4. **Physics Agent** takes scenario + speed → generates + runs solver code
    in **Daytona** → returns trajectory + metrics → persisted to SurrealDB.
-5. **Visualization** renders the trajectory immediately.
-6. **Narration Agent** (optional) summarizes the result via ElevenLabs TTS.
-7. All steps traced via **Arize** for the observability panel.
+5. **Visualization** renders the trajectory immediately and summarizes the
+   result via ElevenLabs TTS.
+6. All steps traced via **Arize** for the observability panel.
 
 ## Build Priority (if time-constrained)
 
