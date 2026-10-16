@@ -1,8 +1,44 @@
 # Video background + existing Roadster overlay
 
-The host displays the phone's live tabletop video full-screen, with the existing transparent `/?embed=1` Roadster UI over it. Keep the four product modules and their styles. The receiving engineer supplies the video stream, ElevenLabs session and authentication; this package supplies the UI commands and feedback, without an additional control page.
+Display the phone's live tabletop video full-screen, with the existing transparent `/?embed=1` Roadster UI over it. Keep the four product modules and their styles. The engineer supplies phone capture and the conversation pipeline; this package supplies the UI commands and feedback, without an additional control page.
 
-## Host composition
+## Use this repository's desktop overlay
+
+The repository now includes `overlay/overlay.py`, a transparent pywebview window over FaceTime (or the full screen). Use that existing window for a phone feed displayed on the desktop. From the repository, start the UI server with `cd frontend/roadster && npm ci && npm run dev`. In your existing Python overlay environment, from the repository root:
+
+```sh
+python overlay/overlay.py --url 'http://127.0.0.1:4178/?embed=1' --fullscreen --interactive
+```
+
+`--interactive` is needed for clicks and dragging. Omit `--fullscreen` to follow the FaceTime window instead. `/?embed=1` removes the reference desk photo and leaves the original UI transparent. The video remains in the underlying phone/FaceTime window. The CLI's existing local-file mode is preserved.
+
+The ZIP also includes `overlay/overlay.py`. Serve its `dist/` with `python3 -m http.server 4180 --bind 127.0.0.1 --directory dist`, then use the same overlay command with port **4180**. Reuse the engineer's Python environment with pywebview and the existing macOS overlay dependencies.
+
+The current `capture/listen.py` uses transcription and spoken replies; it does not automatically execute UI commands. In the engineer's Python process that owns the pywebview `window`, route the interpreted operation to the page using [pywebview's evaluate_js API](https://pywebview.flowrl.com/api/#window-evaluate-js):
+
+```python
+import json
+
+def roadster_command(window, command, payload=None):
+    args = json.dumps([command, payload], allow_nan=False)
+    return window.evaluate_js("""(() => {
+      const [command, payload] = """ + args + """;
+      const api = window.roadsterSim;
+      if (!api?.getReadyState().ready) return {ok:false, error:'UI not ready'};
+      if (!api.getReadyState().commands.includes(command)) return {ok:false, error:'Unknown command'};
+      try {
+        const result = api[command](payload);
+        return {ok:true, result:result ?? null, state:api.getState()};
+      } catch (error) { return {ok:false, error:error.message}; }
+    })()""")
+
+# Call after the page is loaded and getReadyState reports ready.
+roadster_command(window, 'setRampHeight', 24)
+```
+
+This is calling code for the process that owns the window, not a new HTTP service. Phone capture, speech intent handling and the existing process-to-process coordination stay with the engineer.
+
+## If the engineer already receives video in a browser
 
 Serve the Roadster build under `/roadster/` on the host's **same origin**. The following belongs in your host application; no product source or CSS change is needed:
 
@@ -41,7 +77,7 @@ await ui.ready;
 
 `connectRoadster` uses `window.roadsterSim`, `getReadyState()` and local CustomEvents. It allows only the 15 existing message commands, forwards API errors and returns their real results. Calls before readiness or after disconnection fail explicitly. For a late caller, `ui.getReadyState()` returns `{ ready, protocolVersion: 1, instanceId, state, commands }` without needing another ready event.
 
-## ElevenLabs client tool
+## If using ElevenLabs browser client tools
 
 Register a client-side handler that forwards to this dispatcher. The configured tool name and parameter names are case-sensitive and must match the handler registration. Enable **Wait for response** so the conversation receives the actual execution result. [ElevenLabs client tools documentation](https://elevenlabs.io/docs/eleven-agents/customization/tools/client-tools).
 

@@ -1,6 +1,6 @@
 # Roadster UI
 
-The same tabletop interface and four modules: Model, Edit, Motion, Files. UI, model geometry and assets are preserved. For integration, your application's full-screen phone video sits underneath the transparent `/?embed=1` UI.
+The same tabletop interface and four modules: Model, Edit, Motion, Files. UI, model geometry and assets are preserved. For integration, the phone/FaceTime view sits underneath the transparent `/?embed=1` UI in the repository's desktop overlay.
 
 ## Open it
 
@@ -26,7 +26,7 @@ Open **http://127.0.0.1:4178/**. If that port is occupied, use `npm exec vite --
 
 [Integration guide](docs/INTEGRATION.md) · [Calling example](examples/connect-roadster.js)
 
-Your application receives the phone video and runs the ElevenLabs conversation. Display that video full-screen, place this UI's transparent iframe above it, and route voice tool calls to the existing UI methods. The guide includes the small HTML composition and calling code; there is no extra dashboard.
+Keep the phone/FaceTime view full-screen and load this UI in the existing transparent desktop overlay. The guide gives the exact `overlay.py --url` command and Python calling example for the engineer's speech pipeline. Browser video/iframe composition is also documented if that is how the engineer receives the stream.
 
 Three additions support integration: readiness, parameter-change callbacks, and playback-rate control. They add no visible controls. `loadTrajectory` remains available for the engineer's computed model motion. Phone streaming, ElevenLabs authentication and physics stay with the engineer's application.
 

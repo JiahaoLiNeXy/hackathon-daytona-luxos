@@ -1,7 +1,7 @@
 """LuxOS screen overlay: shows a rendering on top of the FaceTime window (your drawing) to project the result.
 
 A transparent, borderless, always-on-top, click-through window that sits exactly over the FaceTime window and
-follows it if it moves. It shows any file you give it and reloads automatically when that file changes.
+follows it if it moves. It shows a local file or HTTP(S) URL and reloads local files when they change.
 
 Usage:
     python overlay/overlay.py render.html                 # HTML / canvas page (transparent background)
@@ -9,6 +9,7 @@ Usage:
     python overlay/overlay.py render.html --app FaceTime  # window to cover (default FaceTime)
     python overlay/overlay.py render.html --fullscreen    # cover the whole main display instead
     python overlay/overlay.py render.html --interactive   # let the mouse reach the page (e.g. a speed slider)
+    python overlay/overlay.py --url 'http://127.0.0.1:4178/?embed=1' --fullscreen --interactive
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import Quartz
 import webview
@@ -89,21 +91,22 @@ def configure_native(window: webview.Window, interactive: bool) -> None:
     AppHelper.callAfter(apply)
 
 
-def supervise(window, path: Path, wrap_dir: Path, app: str | None, interactive: bool) -> None:
+def supervise(window, path: Path | None, wrap_dir: Path, app: str | None, interactive: bool) -> None:
     """Background loop: reload on file change, and keep the window glued to the target app's window."""
     configure_native(window, interactive)
-    last_mtime = path.stat().st_mtime if path.exists() else 0.0
+    last_mtime = path.stat().st_mtime if path is not None and path.exists() else 0.0
     last_rect = None
     while True:
         time.sleep(0.4)
-        try:
-            mtime = path.stat().st_mtime
-            if mtime != last_mtime:
-                last_mtime = mtime
-                window.load_url(page_for(path, wrap_dir))
-                print(f"Reloaded {path.name}")
-        except FileNotFoundError:
-            pass
+        if path is not None:
+            try:
+                mtime = path.stat().st_mtime
+                if mtime != last_mtime:
+                    last_mtime = mtime
+                    window.load_url(page_for(path, wrap_dir))
+                    print(f"Reloaded {path.name}")
+            except FileNotFoundError:
+                pass
         if app:
             rect = find_window_rect(app)
             if rect and rect != last_rect:
@@ -118,16 +121,28 @@ def supervise(window, path: Path, wrap_dir: Path, app: str | None, interactive: 
                 window.show()
 
 
+def http_url(value: str) -> str:
+    try:
+        parsed = urlsplit(value)
+        if parsed.scheme in {"http", "https"} and parsed.hostname:
+            return value
+    except ValueError:
+        pass
+    raise argparse.ArgumentTypeError("URL must use http:// or https:// and include a host")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="LuxOS screen overlay")
-    parser.add_argument("file", type=Path, help="html, image, gif or video to display")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("file", nargs="?", type=Path, help="html, image, gif or video to display")
+    source.add_argument("--url", type=http_url, help="HTTP(S) page to display")
     parser.add_argument("--app", default="FaceTime", help="app whose window to cover (default FaceTime)")
     parser.add_argument("--fullscreen", action="store_true", help="cover the whole main display")
     parser.add_argument("--interactive", action="store_true", help="let the mouse reach the page")
     args = parser.parse_args()
 
-    path = args.file.resolve()
-    if not path.exists():
+    path = args.file.resolve() if args.file is not None else None
+    if path is not None and not path.exists():
         raise SystemExit(f"{path} not found")
 
     app = None if args.fullscreen else args.app
@@ -138,7 +153,7 @@ def main() -> None:
 
     wrap_dir = Path(tempfile.mkdtemp(prefix="luxos_overlay_"))
     window = webview.create_window(
-        "LuxOS overlay", page_for(path, wrap_dir), x=x, y=y, width=w, height=h,
+        "LuxOS overlay", args.url or page_for(path, wrap_dir), x=x, y=y, width=w, height=h,
         frameless=True, transparent=True, on_top=True, easy_drag=False, focus=False,
     )
     webview.start(supervise, (window, path, wrap_dir, app, args.interactive))
