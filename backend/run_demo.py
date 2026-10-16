@@ -1,3 +1,4 @@
+import argparse
 import json
 
 try:
@@ -8,12 +9,16 @@ except ImportError:
     pass
 
 from mock_extraction import mock_loop_scenario, mock_sparse_scenario
+from code_executor import LocalSubprocessExecutor
 from orchestrator import Orchestrator
 from tracing import flush_traces
 
 
 def main():
-    orchestrator = Orchestrator()
+    parser = argparse.ArgumentParser(description="Run the mocked sketch pipeline with optional Arize tracing.")
+    parser.add_argument("--local", action="store_true", help="Use local subprocesses even when Daytona is configured")
+    args = parser.parse_args()
+    orchestrator = Orchestrator(executor=LocalSubprocessExecutor() if args.local else None)
 
     print("=== Loop scenario (full info: grid+legend, spoken speed/entity) ===")
     capture = orchestrator.process_capture(mock_loop_scenario())

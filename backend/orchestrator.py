@@ -9,6 +9,8 @@ from __future__ import annotations
 from typing import Optional
 from uuid import uuid4
 
+from car_spec_lookup import CarSpecLookup
+from code_executor import CodeExecutor
 from modeling_agent import ModelingAgent
 from physics_agent import PhysicsAgent
 from schemas import ExtractionOutput, ModelingResult, PhysicsError, PhysicsResult, ProblemSpec
@@ -30,11 +32,11 @@ class CaptureResult:
 
 
 class Orchestrator:
-    def __init__(self):
+    def __init__(self, executor: Optional[CodeExecutor] = None):
         configure_tracing()
         self.session_id = uuid4().hex
-        self.modeling_agent = ModelingAgent()
-        self.physics_agent = PhysicsAgent()
+        self.modeling_agent = ModelingAgent(car_spec_lookup=CarSpecLookup(executor=executor))
+        self.physics_agent = PhysicsAgent(executor=executor)
         # V0 in-memory state, single session (see docs/orchestrator-spec.md)
         self.problem_spec = None
         self.sources = None

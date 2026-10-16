@@ -2,6 +2,8 @@
 
 [Bedrock integration handoff](docs/bedrock-integration.md)
 
+[Agent-flow visualization with Arize](docs/arize-tracing.md)
+
 ## Capture (Phase 1, step 1)
 
 Grabs one camera frame and one voice clip from the Mac and wraps them as `LuxInput` JSON for the processor layer.
