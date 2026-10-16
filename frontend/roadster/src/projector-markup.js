@@ -3,7 +3,7 @@ export const projectorMarkup = `
  <section id="scene-panel" class="projection scene-panel" data-panel aria-label="Roadster model">
   <header class="panel-handle" data-drag-handle tabindex="0" aria-label="Move model panel"><span class="handle-grip">⠿</span><h1>Roadster</h1><span id="scene-state" class="scene-state">Ramp test</span></header>
   <div class="viewport" id="viewport"><div id="scene-legend" class="scene-legend" hidden><span class="before-key">Original path</span><span class="after-key">Adjusted path</span></div><div id="wall-hint" class="wall-hint" hidden>Drag the wall to move it</div></div>
-  <div class="scene-tools"><div class="view-switch"><button id="view-scene" class="active">3D</button><button id="view-side">Side</button><button id="view-car">Car</button></div><button id="reset-view" aria-label="Reset view">↺</button><span class="tool-spacer"></span><button data-toggle-panel="edit-panel">Wall</button><button data-toggle-panel="motion-panel">Play</button><button data-toggle-panel="assets-panel">Files</button></div><span class="resize-mark"></span>
+  <div class="scene-tools"><div class="view-switch"><button id="view-scene" class="active">3D</button><button id="view-side">Side</button><button id="view-car">Car</button></div><button id="reset-view" aria-label="Reset view">↺</button><span class="tool-spacer"></span><button id="scene-play" class="primary">▶ Run</button><button data-toggle-panel="edit-panel">Wall</button><button data-toggle-panel="motion-panel">Timeline</button><button data-toggle-panel="assets-panel">Files</button></div><span class="resize-mark"></span>
  </section>
  <section id="edit-panel" class="projection edit-panel" data-panel aria-label="Wall test">
   <header class="panel-handle" data-drag-handle tabindex="0" aria-label="Move test panel"><span class="handle-grip">⠿</span><h2>Wall test</h2><button class="icon-button close-panel" data-close-panel="edit-panel" aria-label="Close test panel">×</button></header>
@@ -16,8 +16,8 @@ export const projectorMarkup = `
     <button id="wall-remove" class="quiet">Remove wall</button>
    </div>
    <div class="rule"></div><div class="row"><label for="entry-speed">Entry speed</label><span class="input-unit"><input id="entry-speed" type="number" min="5" max="40" step="0.5" value="22.2">m/s</span></div>
-   <div class="experiment-actions"><button id="trial-button" class="primary" disabled>Run</button><button id="adjust-button" disabled>Adjust ramp</button></div>
-   <p id="experiment-status" role="status" class="experiment-status">Add a wall to start</p>
+   <div class="experiment-actions"><button id="trial-button" class="primary">Run</button><button id="adjust-button" disabled>Adjust ramp</button></div>
+   <p id="experiment-status" role="status" class="experiment-status">Run the car or add a wall</p>
    <div id="comparison-results" class="comparison-results" hidden><div><span>Before</span><strong id="before-result">—</strong></div><div><span>After</span><strong id="after-result">—</strong></div><p id="adjustment-detail"></p></div>
    <div id="comparison-actions" class="comparison-actions" hidden><button id="show-before">Original path</button><button id="show-after">Adjusted path</button><button id="show-compare" class="active">Compare</button></div>
    <small class="model-note">2D point-mass model · Vehicle envelope check</small>

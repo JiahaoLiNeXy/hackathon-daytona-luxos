@@ -17,9 +17,9 @@ Open `http://127.0.0.1:4178/`. For the downloaded ZIP, run `npm ci && npm run pr
 
 ## Try the wall experiment
 
-Click **Add wall → Run → Adjust ramp → Compare**. Drag the wall in the model or edit its position/height. The first run uses the current ramp; the car stops at the first conservative wall contact. Adjustment generates candidate ramps from the current inputs, runs the Physics Agent's fixed Python solver again, and checks the complete moving car envelope. Comparison overlays both paths in one coordinate system. Changed inputs invalidate results; a failed search reports no solution.
+Click **Run** on the model to calculate and drive the original folded ramp, even without a wall. Add a wall or finish dragging it to automatically run the original path, stop at contact, adjust the ramp, recompute, and replay the before/after comparison. The original tall return bend stays in the model; when the wall blocks its join, a bounded fallback can move the join while retaining the bend's shape. The result reports both lift and bend movement.
 
-The default wall at X = −18 m, height = 3 m produces a visible before/after. Moving it to −15 m demonstrates a no-solution result in the bounded search because the returning flight can hit the wall. These are computed inputs, not selected playback fixtures.
+Changed inputs cancel the old sequence. A clear original path is kept; a failed bounded search reports no solution. None of these actions select playback fixtures. Manual **Adjust ramp**, playback and comparison controls remain inside the projected modules.
 
 [Wall workflow, API and model limits](docs/WALL-EXPERIMENT.md) · [Physics input/result adapter](docs/PHYSICS-AGENT.md)
 

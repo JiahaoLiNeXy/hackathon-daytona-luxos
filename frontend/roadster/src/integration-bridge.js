@@ -1,6 +1,6 @@
 export const INTEGRATION_PROTOCOL_VERSION = 1;
 export const INTEGRATION_COMMANDS = Object.freeze([
-  'loadTrajectory', 'play', 'pause', 'seek', 'setVehicleScale', 'setRampHeight',
+  'loadTrajectory', 'run', 'play', 'pause', 'seek', 'setVehicleScale', 'setRampHeight',
   'setWall', 'reset', 'setView', 'getState', 'showModule', 'hideModule',
   'moveModule', 'setPlaybackRate', 'getReadyState',
   'setRampCurve', 'loadPhysicsResult', 'runTrial', 'adjustRamp', 'compare', 'setEntrySpeed',

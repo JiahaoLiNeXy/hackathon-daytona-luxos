@@ -1,6 +1,6 @@
 const phases = new Set(['idle', 'listening', 'thinking', 'speaking', 'error']);
 const actions = {
-  setWall: 'Updating wall', runTrial: 'Running trial', adjustRamp: 'Adjusting ramp',
+  run: 'Running wall experiment', setWall: 'Updating wall', runTrial: 'Running trial', adjustRamp: 'Adjusting ramp',
   setRampCurve: 'Changing ramp', setRampHeight: 'Changing ramp', compare: 'Comparing paths',
   loadPhysicsResult: 'Loading result', loadTrajectory: 'Loading path',
   play: 'Playing', pause: 'Pausing', reset: 'Resetting playback', seek: 'Seeking',
@@ -22,12 +22,12 @@ function object(value) {
 }
 function resultFeedback(command, result) {
   const attention = detail => ({phase: 'attention', detail});
-  if (command === 'runTrial' || command === 'adjustRamp') {
+  if (command === 'run' || command === 'runTrial' || command === 'adjustRamp') {
     if (!result?.before) throw new Error('Run cancelled. Check the settings and try again.');
-    if (command === 'adjustRamp' && !result.after) return attention('No clear ramp found. Try moving the wall.');
-    const attempt = command === 'adjustRamp' ? result.after : result.before;
+    if ((command === 'adjustRamp' || (command === 'run' && result.search)) && !result.after) return attention('No clear ramp found. Try moving the wall.');
+    const attempt = command === 'adjustRamp' || (command === 'run' && result.after) ? result.after : result.before;
     if (!attempt.result?.metrics?.traction_ok) return attention('Lost traction. Adjust the ramp.');
-    if (attempt.assessment?.status === 'clear') return {phase: 'done', detail: command === 'adjustRamp' ? 'Ramp adjusted. Wall cleared.' : 'Wall cleared.'};
+    if (attempt.assessment?.status === 'clear') return {phase: 'done', detail: result.after ? 'Ramp adjusted. Wall cleared.' : 'Run complete.'};
     if (attempt.assessment?.status === 'collision') return attention('Wall hit. Adjust the ramp.');
     return attention('Clearance could not be confirmed.');
   }

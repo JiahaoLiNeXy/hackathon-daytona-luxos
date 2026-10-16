@@ -150,7 +150,8 @@ async function roadsterCommand({ transcript, command, payloadJson = '' }) {
 | `setVoiceState` | `{ phase, transcript?, detail? }`; phase is `idle`, `listening`, `thinking`, `speaking` or `error`. Text fields are at most 500 characters. Returns the new voice state; `idle` hides the panel. |
 | `runVoiceCommand` | `{ transcript, command, payload? }`; nonempty actual transcript, at most 500 characters. Awaits an existing action and returns its result; rejects failures. Excludes `getState`, `getReadyState`, `setVoiceState`, `runVoiceCommand` and `exportGLB` as nested commands. |
 | `loadTrajectory` | `{ version: 1, units: 'm', upAxis: 'Y', samples: [...] }`; validates, pauses at time zero, returns `{ samples, duration, warnings }`. |
-| `play` / `pause` / `reset` | Omitted; resume / pause / return to time zero while keeping data. |
+| `run` | Omitted; promise for the full current-input trial → original playback → adjustment (if blocked) → comparison playback sequence. Works without a wall too. |
+| `play` / `pause` / `reset` | Omitted; play computes when no trajectory exists, otherwise resumes; pause holds playback; reset cancels the automatic sequence and returns to time zero. |
 | `seek` | Finite seconds; clamps to the time range and pauses. |
 | `setPlaybackRate` | Exactly `0.25`, `0.5`, `1`, or `2`; updates the existing selector. |
 | `setVehicleScale` | Number `0.5…1.6`. |
@@ -159,7 +160,7 @@ async function roadsterCommand({ transcript, command, payloadJson = '' }) {
 | `setEntrySpeed` | Number `5…40` m/s; invalidates the previous experiment. |
 | `setRampCurve` | Array of `{x,y}` metre coordinates; parks the car pending calculation. |
 | `loadPhysicsResult` | Paired `{problemSpec,result}` from one solve; see [PHYSICS-AGENT.md](PHYSICS-AGENT.md). |
-| `runTrial` / `adjustRamp` | Omitted; promises resolving after real local calculation. Trial requires a wall; adjustment requires a completed trial. |
+| `runTrial` / `adjustRamp` | Omitted; promises resolving after real local calculation. Trial works without a wall. Adjustment requires a wall and automatically runs the prerequisite trial if missing. |
 | `compare` | `before`, `after`, or `compare`; selects the available result view. |
 | `setView` | `scene`, `side`, or `car`. |
 | `showModule` / `hideModule` | `scene-panel`, `edit-panel`, `motion-panel`, `assets-panel`, or optional `voice-panel`. Use `setVoiceState({phase:'idle'})` to clear and hide voice feedback. |
@@ -193,11 +194,11 @@ For paired physics data use `loadPhysicsResult({problemSpec,result})`; it constr
 
 ```js
 await ui.dispatch('setWall', {enabled:true, x:-18, height:3});
-await ui.dispatch('runTrial');
-await ui.dispatch('adjustRamp');
-await ui.dispatch('compare', 'compare');
+await ui.dispatch('run'); // Includes original playback, adjustment and comparison playback.
 const {experiment} = await ui.dispatch('getState');
 // Inspect after === null / search.status before announcing success.
 ```
 
 Moving the wall or editing a curve/speed/scale clears the old result. Do not cache a successful assessment across parameter revisions. The solver is a simplified 2D model and clearance is a conservative visual car envelope; see [WALL-EXPERIMENT.md](WALL-EXPERIMENT.md) for limits.
+
+UI wall/speed edits trigger the sequence automatically after editing finishes. Programmatic setters remain parameter-only so the host can batch edits; call `run` once after them. `getState().workflow` reports testing, before, adjusting, after, complete, no-solution or error. Manual result selection or seeking cancels the automatic sequence.

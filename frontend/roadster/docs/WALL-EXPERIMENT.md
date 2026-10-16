@@ -4,12 +4,14 @@
 
 ## 操作
 
-1. 点 **放墙**，在模型上拖动墙，或修改位置/高度。
-2. 点 **试跑**。当前坡道和速度送到本地 Python 求解器；车身包络碰墙时播放停在碰撞处。
-3. 点 **调整跑道**。根据当前墙搜索平滑的进场坡道，逐个重新求解并检查完整行程；速度、质量和下压力不因搜索而改变。
-4. **对比**把原路线和新路线放在同一坐标、同一镜头里。原车停在碰撞处，新车继续。也可单独看原路线或新路线。
+1. 无墙时点模型上的 **Run**，即可实时计算并播放原来的高弯折返跑道。
+2. 点 **Add wall**，或在模型上把墙拖到新位置。松手后自动开始原路线试跑；输入位置、高度或速度后也会重新试跑。
+3. 原车跑到碰撞处后，自动按当前墙的位置调整跑道、重新求解，再播放前后对比。**Run** 可重做整个流程；**Adjust ramp** 也可手动触发。
+4. **Original path / Adjusted path / Compare** 可查看已计算结果；播放、暂停和时间轴都在桌面模块内。
 
-移动墙、修改速度、换入跑道或改变车模尺寸后，旧结果失效，必须重新试跑。没有可行候选时明确显示“当前搜索范围内未找到可行跑道”，不会播放替代的成功动画。
+移动墙会取消旧的计算与自动调整链。拖动过程中不逐帧启动求解，松手后才提交最终位置。原路线本来就安全时不强行改动；有限搜索失败会显示没有找到路线，不播放替代动画。
+
+搜索先尝试改变进场段；若墙挡住原坡道连接点、导致该类候选全部不可用，再有限搜索连接位置的水平移动。后者保留原高弯/顶部折返的相对形状，保留起点和物理参数，并在结果中显示 `joinShiftXM`。它不保证任何墙位置都能找到方案。
 
 ## 运行
 
@@ -41,12 +43,12 @@ npm run dev
 }
 ```
 
-`action: "adjust"` 执行搜索。返回 `{before, after, search}`：每个结果包含原始 `problemSpec`、完整 Physics `result`、`assessment`；`after` 无解时为 `null`，成功时另含 `adjustment`。示例 JSON 仅说明契约，不是预设成功案例。
+`action: "trial"` 也允许 `wall.enabled=false`，计算无墙行驶；此时没有进行墙体检查。`action: "adjust"` 要求启用墙并执行搜索。返回 `{before, after, search}`：每个结果包含原始 `problemSpec`、完整 Physics `result`、`assessment`；`after` 无解时为 `null`，成功时另含 `adjustment`。示例 JSON 仅说明契约，不是预设成功案例。
 
 - `assessment.status` 是 `clear` / `collision` / `invalid`。`firstHit` 给出播放时间和原始/显示位置；不是精确刚体接触时刻。
 - `result.execution.sandbox_id` 为此次进程的 `local-live-*`。没有调用 Daytona，也没有伪装成云端执行。
 - 请求只接受有限范围数值；固定可信 Python 文件执行，不接收客户端代码。支持取消，限制并发、输入大小、执行时长与输出大小。
-- 当前搜索针对从水平进场段连接到回弯主体的坡道。未找到方案只说明本次有限搜索失败，不证明所有可能设计都无解。
+- 当前搜索针对从水平进场段连接到回弯主体的坡道，可在有限范围内移动连接位置。未找到方案只说明本次有限搜索失败，不证明所有可能设计都无解。
 
 ## 前端调用
 
@@ -55,9 +57,8 @@ npm run dev
 ```js
 const sim = window.roadsterSim;
 sim.setWall({enabled:true,x:-18,height:3});
-await sim.runTrial();
-await sim.adjustRamp();
-sim.compare('compare'); // before / after / compare
+await sim.run(); // 原路线试跑 -> 播放到碰撞 -> 调整 -> 重算 -> 对比播放
+// 分步控制仍可使用 await sim.runTrial() / await sim.adjustRamp()
 const state = sim.getState();
 ```
 

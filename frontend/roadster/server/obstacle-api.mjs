@@ -6,7 +6,8 @@ const invalid=message=>{throw Object.assign(new Error(message),{code:'invalid_in
 export async function evaluateObstacle(input,{signal}={}){
  if(!input||!['trial','adjust'].includes(input.action))invalid('action must be trial or adjust');
  const {problemSpec,wall,scale=1}=input;
- if(!wall||wall.enabled!==true||![wall.x,wall.height,scale].every(Number.isFinite)||wall.x < -35||wall.x>5||wall.height<1||wall.height>25||scale<.5||scale>1.6||wall.width!==8||wall.thickness!==.35)invalid('Wall or vehicle dimensions are outside the supported range');
+ if(!wall||typeof wall.enabled!=='boolean'||![wall.x,wall.height,scale].every(Number.isFinite)||wall.x < -35||wall.x>5||wall.height<1||wall.height>25||scale<.5||scale>1.6||wall.width!==8||wall.thickness!==.35)invalid('Wall or vehicle dimensions are outside the supported range');
+ if(input.action==='adjust'&&!wall.enabled)invalid('Place a wall before adjusting the ramp');
  const spec=structuredClone(problemSpec),obstacle=structuredClone(wall);
  const [result]=await runPhysics([spec],{signal});
  const before={problemSpec:spec,result,assessment:assessWall({problemSpec:spec,result},obstacle,{scale})};

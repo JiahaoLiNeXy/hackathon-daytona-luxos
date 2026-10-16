@@ -88,6 +88,39 @@ test('default input is generated from the current rampPoint geometry', () => {
   verified.push('default geometry matches input fixture');
 });
 
+test('a disabled-wall trial computes live full motion without a false collision or adjustment', async () => {
+  const input = request('trial', -24);
+  input.wall.enabled = false;
+  const trial = await execute('no wall baseline trial', input);
+  assertLive(trial.before);
+  assert.deepEqual(trial.before.problemSpec, input.problemSpec);
+  assert.equal(trial.before.assessment.status, 'clear');
+  assert.equal(trial.before.assessment.firstHit, null);
+  assert.equal(trial.before.assessment.checkedSegments, 0);
+  assert.match(trial.before.assessment.method, /Wall disabled; no obstacle was tested/);
+  assert.equal(trial.after, null);
+  assert.equal(trial.search, null);
+  const samples = trial.before.result.trajectory;
+  assert.ok(samples.at(-1).t > samples[0].t, 'baseline motion must have a positive duration');
+  assert.ok(samples.some(sample => sample.x !== samples[0].x || sample.y !== samples[0].y),
+    'baseline motion must actually change the car position');
+  verified.push('disabled-wall trial returns live motion without a wall hit or adjustment');
+});
+
+test('adjustment requires an enabled wall while disabled-wall trials retain dimension validation', async () => {
+  const input = request('adjust', -18);
+  input.wall.enabled = false;
+  await assert.rejects(execute('disabled-wall adjust', input), {
+    code: 'invalid_input', message: 'Place a wall before adjusting the ramp',
+  });
+  for (const patch of [{ x: -36 }, { height: 26 }, { width: 9 }, { thickness: 0.4 }]) {
+    const baseline = request('trial', -18);
+    Object.assign(baseline.wall, { enabled: false }, patch);
+    await assert.rejects(execute(`disabled-wall invalid ${Object.keys(patch)[0]}`, baseline), { code: 'invalid_input' });
+  }
+  verified.push('disabled-wall adjust rejected; disabled-wall trial still validates dimensions');
+});
+
 test('x=-18 m, height=3 m: real trial collides and real adjustment clears with unchanged physics parameters', async () => {
   const trial = await execute('x=-18/h=3 trial', request('trial', -18));
   assertLive(trial.before);
@@ -107,6 +140,26 @@ test('moving the wall to x=-12 m finds a different freshly solved clear curve', 
   assertAdjusted(adjusted);
   assert.notDeepEqual(adjusted.after.problemSpec.ramp_curve_m, adjustedAt18);
   verified.push('x=-12/h=3 clear with a wall-dependent different curve');
+});
+
+test('a wall at the original join is cleared by a real bounded bend translation and regenerated approach', async () => {
+  const input = request('adjust', -6.25);
+  const candidates = makeCandidates(input.problemSpec, input.wall);
+  assert.ok(candidates.length > 0 && candidates.length <= 127, 'fallback must attempt a bounded set of real curves');
+  const adjusted = await execute('x=-6.25/h=3 translated join adjust', input);
+  assertAdjusted(adjusted);
+  assert.ok(adjusted.search.evaluated <= 127);
+  const { joinShiftXM, translatedTailPoints } = adjusted.after.adjustment;
+  assert.ok(joinShiftXM > 0 && joinShiftXM <= 12);
+  assert.equal(translatedTailPoints, 128);
+  assert.match(adjusted.after.adjustment.kind, /^translated-/);
+  assert.deepEqual(adjusted.after.problemSpec.ramp_curve_m[0], input.problemSpec.ramp_curve_m[0]);
+  const originalTail = input.problemSpec.ramp_curve_m.slice(-translatedTailPoints);
+  const translatedTail = adjusted.after.problemSpec.ramp_curve_m.slice(-translatedTailPoints);
+  assert.deepEqual(translatedTail, originalTail.map(point => ({ x: point.x + joinShiftXM, y: point.y })),
+    'the original tall bend must retain its exact relative shape');
+  assert.equal(assessWall(adjusted.after, input.wall, { scale: input.scale }).status, 'clear');
+  verified.push('x=-6.25/h=3 clear through live bounded join translation, unchanged bend shape and physics');
 });
 
 test('x=-15 m rejects every candidate, including a traction-safe ramp that hits the wall again in flight', async () => {

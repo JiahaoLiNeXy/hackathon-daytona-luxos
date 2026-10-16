@@ -34,7 +34,7 @@ export function roadClearance(points, wall) {
   return {clear:minimum>=wall.height+.5,minimumRoadYM:Number.isFinite(minimum)?minimum:null,requiredRoadYM:wall.height+.5,horizontalDeckPaddingM:.28};
 }
 
-export function generateWallCandidates(baseSpec, wall) {
+function generateApproachCandidates(baseSpec, wall) {
   const original=baseSpec.ramp_curve_m;
   if(!Array.isArray(original)||original.length<3)return {candidates:[],reason:'No usable base curve.'};
   let join=0;
@@ -86,6 +86,37 @@ export function generateWallCandidates(baseSpec, wall) {
   }
   candidates.sort((a,b)=>a.cost-b.cost);
   return {candidates:candidates.slice(0,127),reason:null,search:{currentBasePointCount:original.length,approachEndIndex:join,preservedTailPoints:tail.length,originalStart:copy(start),originalJoin:copy(end),availableForceN:available,energyHeightM:energyHeight,maxCandidates:127,onlyCurveChanges:true,limitations:'Two bounded approach deformation families, not a globally optimal or universally feasible shape search.'}};
+}
+
+export function generateWallCandidates(baseSpec, wall) {
+  const primary=generateApproachCandidates(baseSpec,wall);
+  if(primary.candidates.length||!primary.search)return primary;
+
+  // A wall near the fixed join can intersect the road at y=0 for every
+  // approach-only candidate. Try a bounded horizontal translation of the tall
+  // bend, regenerating only the flat approach and preserving its start. The
+  // bend's relative geometry and all physical parameters remain unchanged.
+  const original=baseSpec.ramp_curve_m,join=primary.search.approachEndIndex;
+  const start=original[0],span=original[join].x-start.x,candidates=[];
+  const joinShiftsM=[2,4,6,8,10,12];
+  for(const joinShiftXM of joinShiftsM) {
+    const translated=copy(baseSpec);
+    translated.ramp_curve_m=original.map((point,i)=>({
+      x:i<=join?start.x+(point.x-start.x)*(span+joinShiftXM)/span:point.x+joinShiftXM,
+      y:point.y,
+    }));
+    const extension=generateApproachCandidates(translated,wall);
+    for(const candidate of extension.candidates)candidates.push({
+      ...candidate,
+      parameters:{...candidate.parameters,family:`translated-${candidate.parameters.family}`,joinShiftXM,translatedTailPoints:original.length-join-1},
+    });
+  }
+  candidates.sort((a,b)=>a.cost-b.cost||a.parameters.joinShiftXM-b.parameters.joinShiftXM);
+  return {
+    candidates:candidates.slice(0,127),reason:null,
+    search:{...primary.search,joinShiftsM,translatedTailShapePreserved:true,
+      limitations:'Bounded approach deformation with a horizontal bend-translation fallback, not a globally optimal or universally feasible shape search.'},
+  };
 }
 
 // Interface requested by server/obstacle-api.mjs. Score only ranks this bounded
