@@ -1,0 +1,8 @@
+opencv-python
+numpy
+sounddevice
+faster-whisper
+elevenlabs
+boto3
+anthropic
+pywebview

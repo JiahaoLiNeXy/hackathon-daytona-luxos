@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>LuxOS overlay demo</title>
+<style>html,body{margin:0;height:100%;background:transparent;overflow:hidden}canvas{width:100%;height:100%}</style>
+<canvas id="c"></canvas>
+<script>
+// Placeholder projection: a car-like dot flying a parabola over the drawing. Replace with the real renderer.
+const c = document.getElementById("c"), g = c.getContext("2d");
+function fit(){ c.width = innerWidth*devicePixelRatio; c.height = innerHeight*devicePixelRatio; }
+addEventListener("resize", fit); fit();
+let t0 = performance.now();
+function frame(now){
+  const W = c.width, H = c.height, t = ((now - t0)/1000) % 3 / 3;
+  g.clearRect(0,0,W,H);
+  g.strokeStyle = "rgba(0,255,180,.9)"; g.lineWidth = 6*devicePixelRatio; g.setLineDash([18,14]);
+  g.beginPath();
+  for (let u=0; u<=1.001; u+=.02){ const x = W*(.15+.7*u), y = H*(.75 - 1.6*u*(1-u)*.55); u?g.lineTo(x,y):g.moveTo(x,y); }
+  g.stroke(); g.setLineDash([]);
+  const x = W*(.15+.7*t), y = H*(.75 - 1.6*t*(1-t)*.55);
+  g.fillStyle = "#ff3d71"; g.beginPath(); g.arc(x,y,16*devicePixelRatio,0,7); g.fill();
+  g.fillStyle = "rgba(255,255,255,.95)"; g.font = `${26*devicePixelRatio}px -apple-system, sans-serif`;
+  g.fillText("LuxOS projection", W*.05, H*.08);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
