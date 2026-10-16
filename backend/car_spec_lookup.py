@@ -38,13 +38,22 @@ def main():
         print(json.dumps({"status": "error", "message": "ANCHORBROWSER_API_KEY not set"}))
         return
 
-    query = urllib.parse.quote(f"{entity} curb weight kg")
+    # Guess the Wikipedia article directly instead of starting from a
+    # Google search -- a more targeted starting point for well-known car
+    # models (Wikipedia's URL convention usually matches "Entity Name" ->
+    # "Entity_Name"). Measured latency is still ~30-45s either way: it's
+    # dominated by the browser session + per-step vision-LLM reasoning, not
+    # by navigation step count, so this is about search quality, not speed.
+    wiki_slug = urllib.parse.quote(entity.strip().replace(" ", "_"))
     body = {
-        "url": f"https://www.google.com/search?q={query}",
+        "url": f"https://en.wikipedia.org/wiki/{wiki_slug}",
         "prompt": (
-            f"Find the curb weight (mass) of the {entity} in kilograms, from a "
-            "reliable source (manufacturer site, Wikipedia, or a reputable "
-            "automotive publication). Return only the requested structured output."
+            f"This should be the Wikipedia article for the {entity}. If it is, "
+            "find its curb weight (mass) in kilograms from the specifications "
+            "table. If this is the wrong page (redirect, disambiguation, or "
+            "not found), use Wikipedia's search box to find the correct "
+            "article, then extract the mass from there. Return only the "
+            "requested structured output."
         ),
         "output_schema": {
             "type": "object",
@@ -54,8 +63,8 @@ def main():
             },
             "required": ["mass_kg"],
         },
-        "max_steps": 40,
-        "llm_timeout": 60,
+        "max_steps": 20,
+        "llm_timeout": 45,
     }
     req = urllib.request.Request(
         "https://api.anchorbrowser.io/v1/tools/perform-web-task",
@@ -64,7 +73,7 @@ def main():
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=85) as resp:
+        with urllib.request.urlopen(req, timeout=75) as resp:
             parsed = json.loads(resp.read())
     except urllib.error.URLError as exc:
         print(json.dumps({"status": "error", "message": str(exc)}))
