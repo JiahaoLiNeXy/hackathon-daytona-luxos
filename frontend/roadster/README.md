@@ -1,39 +1,51 @@
-# Roadster UI
+# Roadster / Projected Modules
 
-The same tabletop interface and four modules: Model, Edit, Motion, Files. UI, model geometry and assets are preserved. For integration, the phone/FaceTime view sits underneath the transparent `/?embed=1` UI in the repository's desktop overlay.
+Four movable, transparent modules on the original desk photo: Model, Wall experiment, Motion and Files. All controls and results stay inside the projected UI. The Roadster, original ramp assets and photo are preserved; dimensions are editable visual assumptions, not official CAD.
 
-## Open it
+## Run
 
-With the handoff ZIP, unzip and run:
-
-```sh
-python3 -m http.server 4180 --bind 127.0.0.1 --directory dist
-```
-
-Open **http://127.0.0.1:4180/**. This is the original product interface; no separate dashboard or debug page is included.
-
-To develop from source (Node.js 20+):
+Requires Node.js 18+ and Python 3.9+ (`python3` on macOS/Linux, `python` on Windows). No pip packages or API keys are required for the local solver.
 
 ```sh
+# From the repository root:
 cd frontend/roadster
 npm ci
 npm run dev
 ```
 
-Open **http://127.0.0.1:4178/**. If that port is occupied, use `npm exec vite -- --host 127.0.0.1 --port 4180 --strictPort`.
+Open `http://127.0.0.1:4178/`. For the downloaded ZIP, run `npm ci && npm run preview` in its extracted root; it already includes `dist/`. After source changes, run `npm run build` first. Dev and preview both provide `/api/obstacle`. **Static hosting alone cannot calculate the wall experiment.**
 
-## Connect voice and phone video
+## Try the wall experiment
+
+Click **放墙 → 试跑 → 调整跑道 → 对比**. Drag the wall in the model or edit its position/height. The first run uses the current ramp; the car stops at the first conservative wall contact. Adjustment generates candidate ramps from the current inputs, runs the Physics Agent's fixed Python solver again, and checks the complete moving car envelope. Comparison overlays both paths in one coordinate system. Changed inputs invalidate results; a failed search reports no solution.
+
+The default wall at X = −18 m, height = 3 m produces a visible before/after. Moving it to −15 m demonstrates a no-solution result in the bounded search because the returning flight can hit the wall. These are computed inputs, not selected playback fixtures.
+
+[Wall workflow, API and model limits](docs/WALL-EXPERIMENT.md) · [Physics input/result adapter](docs/PHYSICS-AGENT.md)
+
+## Connect the engineer's application
 
 [Integration guide](docs/INTEGRATION.md) · [Calling example](examples/connect-roadster.js)
 
-Keep the phone/FaceTime view full-screen and load this UI in the existing transparent desktop overlay. The guide gives the exact `overlay.py --url` command and Python calling example for the engineer's speech pipeline. Browser video/iframe composition is also documented if that is how the engineer receives the stream.
+Use `/?embed=1` to remove the desk photo and place the transparent UI over the phone/FaceTime view with the existing `overlay/overlay.py`. Readiness events, parameter revisions, playback rate, direct calls and the same-origin message bridge remain available. The bridge also supports asynchronous `runTrial()` and `adjustRamp()` calls. Phone transport, speech intent routing and physical projection calibration remain the host application's responsibility.
 
-Three additions support integration: readiness, parameter-change callbacks, and playback-rate control. They add no visible controls. `loadTrajectory` remains available for the engineer's computed model motion. Phone streaming, ElevenLabs authentication and physics stay with the engineer's application.
+The four stable module IDs are `scene-panel`, `edit-panel`, `motion-panel`, `assets-panel`. Titles drag, × closes, and the Model controls reopen modules. No outer debug toolbar is added.
 
-Trajectory positions use metres, seconds, +X forward, +Y up and +Z right. Align the solver origin and center of mass with the model before loading real results.
+## Models and data
 
-## Reference
+- `public/models/roadster-2026.glb`, `launch-ramp.glb`, `roadster-scene.glb`: preserved original GLB assets.
+- `src/car.js`, `src/track.js`: editable original model definitions; `src/curve-track.js` constructs the current computed ramp.
+- `public/backgrounds/desk-reference.png`: original supplied desk photo.
+- [Model dimensions and coordinates](docs/MODEL-ASSETS.md) · [Trajectory CSV/JSON contract](docs/TRAJECTORY.md) · [Reference sources](references/SOURCES.md).
+- [Solver provenance and wrapper changes](server/vendor/SOURCE.md).
 
-[Trajectory format](docs/TRAJECTORY.md) · [Model dimensions](docs/MODEL-ASSETS.md) · [Source references](references/SOURCES.md) · [Preservation hashes](docs/PRESERVED-ASSETS.json)
+The local solver is a frictionless 2D point/ballistic model. The continuous car-envelope check is conservative visualization geometry, not a tire, suspension or structural safety model. Legacy `public/examples/physics-*.json` are adapter samples; the wall workflow does not read them.
 
-`npm run verify` checks tests, build and preserved assets. `npm run package:handoff` creates `artifacts/roadster-ui-handoff.zip` with the built app, source, docs, models and checksums. No credentials or development dependencies are bundled.
+## Verify and package
+
+```sh
+npm run verify
+python3 scripts/package-handoff.py
+```
+
+`verify` runs tests, build, preserved-asset hashes and actual GLB loading. Packaging creates `artifacts/roadster-ui-handoff.zip` containing source, built app, server, fixed Python solver, tests, docs, models and the desktop overlay launcher, with `SHA256SUMS.json`. Development dependencies and credentials are excluded.

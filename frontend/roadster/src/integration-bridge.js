@@ -3,9 +3,10 @@ export const INTEGRATION_COMMANDS = Object.freeze([
   'loadTrajectory', 'play', 'pause', 'seek', 'setVehicleScale', 'setRampHeight',
   'setWall', 'reset', 'setView', 'getState', 'showModule', 'hideModule',
   'moveModule', 'setPlaybackRate', 'getReadyState',
+  'setRampCurve', 'loadPhysicsResult', 'runTrial', 'adjustRamp', 'compare', 'setEntrySpeed',
 ]);
 
-const parameterCommands = new Set(['setVehicleScale', 'setRampHeight', 'setWall']);
+const parameterCommands = new Set(['setVehicleScale', 'setRampHeight', 'setWall', 'setRampCurve', 'loadPhysicsResult', 'setEntrySpeed']);
 const allowedCommands = new Set(INTEGRATION_COMMANDS);
 const snapshot = value => globalThis.structuredClone(value);
 
@@ -43,11 +44,23 @@ export function createIntegrationBridge({ host = globalThis.window, api, getStat
         ![value.vehicleScale, value.rampHeight, value.wall.x, value.wall.height].every(Number.isFinite)) {
       throw new TypeError('Parameters require finite vehicleScale, rampHeight, wall.x, wall.height and boolean wall.enabled.');
     }
-    return {
+    const parameters = {
       vehicleScale: value.vehicleScale,
       rampHeight: value.rampHeight,
       wall: { enabled: value.wall.enabled, x: value.wall.x, height: value.wall.height },
     };
+    if (value.entrySpeedMs !== undefined) {
+      if (!Number.isFinite(value.entrySpeedMs)) throw new TypeError('entrySpeedMs must be finite.');
+      parameters.entrySpeedMs = value.entrySpeedMs;
+    }
+    if (value.rampCurve !== undefined) {
+      if (!Array.isArray(value.rampCurve) || value.rampCurve.length < 2 ||
+          !value.rampCurve.every(point => point && Number.isFinite(point.x) && Number.isFinite(point.y))) {
+        throw new TypeError('rampCurve requires at least two finite x/y points.');
+      }
+      parameters.rampCurve = value.rampCurve.map(({ x, y }) => ({ x, y }));
+    }
+    return parameters;
   }
   let previousParameters = readParameters();
 
@@ -87,10 +100,11 @@ export function createIntegrationBridge({ host = globalThis.window, api, getStat
     if (destroyed) return false;
     const parameters = readParameters();
     const changed = [];
-    for (const key of ['vehicleScale', 'rampHeight']) {
+    for (const key of ['vehicleScale', 'rampHeight', 'entrySpeedMs']) {
       if (!Object.is(parameters[key], previousParameters[key])) changed.push(key);
     }
     if (['enabled', 'x', 'height'].some(key => !Object.is(parameters.wall[key], previousParameters.wall[key]))) changed.push('wall');
+    if (JSON.stringify(parameters.rampCurve) !== JSON.stringify(previousParameters.rampCurve)) changed.push('rampCurve');
     if (!changed.length) return false;
     previousParameters = snapshot(parameters);
     parameterRevision++;
