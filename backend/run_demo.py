@@ -8,7 +8,7 @@ try:
 except ImportError:
     pass
 
-from mock_extraction import mock_loop_scenario, mock_sparse_scenario
+from mock_extraction import mock_loop_scenario, mock_sparse_scenario, mock_uncached_car_scenario
 from code_executor import LocalSubprocessExecutor
 from orchestrator import Orchestrator
 from tracing import flush_traces
@@ -30,6 +30,10 @@ def main():
 
     print("\n=== Sparse scenario (no grid/legend/speed/entity) ===")
     capture = orchestrator.process_capture(mock_sparse_scenario())
+    print(json.dumps(capture.to_dict(), indent=2))
+
+    print("\n=== Uncached car (forces the live anchorbrowser lookup, ~30-45s) ===")
+    capture = orchestrator.process_capture(mock_uncached_car_scenario())
     print(json.dumps(capture.to_dict(), indent=2))
 
 

@@ -52,3 +52,21 @@ def mock_sparse_scenario() -> ExtractionOutput:
         mentioned_entities=[],
         mentioned_quantities=[],
     )
+
+
+def mock_uncached_car_scenario() -> ExtractionOutput:
+    """Same ramp as the sparse scenario, but names a car that's in neither
+    KNOWN_SPECS nor memory -- forces the live anchorbrowser lookup path.
+    Takes ~30-45s (real browser automation), unlike the other two mocks."""
+    return ExtractionOutput(
+        sketch=Sketch(
+            curves=[
+                Curve(id="c1", points_px=[[0, 200], [50, 150], [100, 80]]),
+            ],
+            grid_detected=GridDetected(present=True, spacing_px=50),
+            labels_text=["each square is 1 meter"],
+        ),
+        voice_transcript="the Lamborghini Huracan races up this ramp at 50 mph",
+        mentioned_entities=["Lamborghini Huracan"],
+        mentioned_quantities=[Quantity(text="50 mph", value=50, unit="mph")],
+    )
