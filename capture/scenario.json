@@ -1,0 +1,17 @@
+{
+  "name": "Tesla Roadster driveway jump",
+  "event": "A Tesla Roadster drives up a curved driveway ramp, launches off its end, and flies through the air to land on the ground beyond. This is the recent Tesla Roadster demo that the live drawing is about.",
+  "drawing_meaning": "The hand-drawn curve is the driveway ramp in side view: it climbs, bends, and ends at the launch point. The ground beyond the ramp is the landing area. The car is usually not drawn; it is named in speech.",
+  "typical_requests": [
+    "Change the driveway angle, curvature, or height and ask how the car's flight trajectory changes",
+    "Change the launch speed and ask whether the car clears a gap, falls short, or overshoots",
+    "Ask whether the car clears a set of trucks or obstacles on the ground"
+  ],
+  "defaults": {
+    "car": "Tesla Roadster",
+    "car_mass_kg": 1300,
+    "units": "meters, unless the user states otherwise",
+    "scale": "assume a scale only when it is drawn or spoken; otherwise leave it unset and say so"
+  },
+  "notes": "Mass does not change a projectile trajectory (drag is ignored), so it is context, not a solver input."
+}
