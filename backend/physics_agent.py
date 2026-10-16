@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import math
 
-from code_executor import CodeExecutionError, CodeExecutor, LocalSubprocessExecutor
+from code_executor import CodeExecutionError, CodeExecutor, default_executor
 from schemas import (
     PhysicsError,
     PhysicsExecution,
@@ -170,7 +170,7 @@ main()
 
 class PhysicsAgent:
     def __init__(self, executor: CodeExecutor | None = None):
-        self.executor = executor or LocalSubprocessExecutor()
+        self.executor = executor or default_executor()
 
     def run(self, problem_spec: ProblemSpec) -> PhysicsResult:
         validation_error = self._validate(problem_spec)

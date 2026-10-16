@@ -12,6 +12,7 @@ Same interface, so nothing above this layer needs to change.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -76,13 +77,63 @@ class LocalSubprocessExecutor(CodeExecutor):
 
 
 class DaytonaExecutor(CodeExecutor):
-    """Intended production backend. Not implemented yet — needs Daytona
-    credentials (e.g. DAYTONA_API_KEY) and the Daytona SDK/CLI. Raise
-    rather than silently falling back, so a missing integration is loud.
+    """Real Daytona sandbox backend. Requires `DAYTONA_API_KEY` (and
+    optionally `DAYTONA_API_URL` / `DAYTONA_TARGET`) in the environment —
+    the `daytona` SDK reads these itself; nothing is passed explicitly here
+    so a key is never handled/logged by our own code.
+
+    `SOLVER_CODE` (see physics_agent.py) reads its input via
+    `json.load(sys.stdin)`. The SDK's `code_run` has no stdin parameter, so
+    we prepend a small stub that monkey-patches `sys.stdin` with the input
+    JSON before the solver code runs — the solver script itself is
+    identical between executors.
     """
 
+    def __init__(self):
+        from daytona import Daytona  # imported lazily so it's only required if used
+
+        self._daytona = Daytona()
+
     def run(self, code: str, input_data: dict, timeout_s: float = 5.0) -> ExecutionOutcome:
-        raise NotImplementedError(
-            "DaytonaExecutor is not implemented yet — use LocalSubprocessExecutor "
-            "for now, or wire in the Daytona SDK here."
+        import json as _json
+
+        wrapped_code = (
+            "import sys, io\n"
+            f"sys.stdin = io.StringIO({_json.dumps(_json.dumps(input_data))})\n"
+            + code
         )
+
+        sandbox = self._daytona.create()
+        sandbox_id = sandbox.id
+        start = time.perf_counter()
+        try:
+            response = sandbox.process.code_run(wrapped_code, timeout=int(timeout_s))
+        except Exception as exc:  # SDK raises its own DaytonaError subclasses
+            raise CodeExecutionError(f"Daytona execution failed: {exc}") from exc
+        finally:
+            try:
+                sandbox.delete()
+            except Exception:
+                pass  # best-effort cleanup; don't mask the real result/error
+
+        duration_ms = (time.perf_counter() - start) * 1000
+
+        if response.exit_code != 0:
+            raise CodeExecutionError(
+                f"solver exited with code {response.exit_code}: {response.result}"
+            )
+        try:
+            result = _json.loads(response.artifacts.stdout)
+        except _json.JSONDecodeError as exc:
+            raise CodeExecutionError(f"solver did not return valid JSON: {exc}") from exc
+
+        return ExecutionOutcome(result=result, duration_ms=duration_ms, sandbox_id=sandbox_id)
+
+
+def default_executor() -> CodeExecutor:
+    """Daytona if credentials are present, otherwise the local subprocess
+    stub — same fallback pattern used for the anchorbrowser/LLM extension
+    points elsewhere in the pipeline."""
+    if os.getenv("DAYTONA_API_KEY"):
+        return DaytonaExecutor()
+    return LocalSubprocessExecutor()

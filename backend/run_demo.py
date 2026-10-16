@@ -1,5 +1,12 @@
 import json
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()  # picks up backend/.env if present (DAYTONA_API_KEY etc.), never printed
+except ImportError:
+    pass
+
 from mock_extraction import mock_loop_scenario, mock_sparse_scenario
 from orchestrator import Orchestrator
 
