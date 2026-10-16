@@ -124,7 +124,8 @@ def _set_output(span, result):
     payload = _payload(result)
     span.set_attribute("output.mime_type", "application/json")
     span.set_attribute("output.value", json.dumps(payload))
-    span.set_status(StatusCode.ERROR if _failed(payload) else StatusCode.OK)
+    error_result = is_dataclass(result) and type(result).__name__.endswith("Error")
+    span.set_status(StatusCode.ERROR if error_result or _failed(payload) else StatusCode.OK)
 
 
 def traced(name, kind, *, inputs=(), attributes=None):

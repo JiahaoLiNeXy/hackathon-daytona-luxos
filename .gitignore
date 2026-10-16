@@ -3,7 +3,8 @@ __pycache__/
 .venv/
 .env
 .env.*
+captures/
+.DS_Store
 node_modules
 dist/
 artifacts/
-.DS_Store

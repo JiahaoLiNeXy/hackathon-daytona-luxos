@@ -38,6 +38,11 @@ needed to switch.
 python3 run_demo.py
 ```
 
+For the agent-flow visualization, see [Arize tracing setup](../docs/arize-tracing.md).
+Set `ARIZE_API_KEY` and `ARIZE_SPACE_ID` in `backend/.env` to export nested
+agent/tool spans to Arize AX. `PAPER_TRACE_BACKEND=console python3 run_demo.py --local`
+prints traces without Arize or Daytona credentials.
+
 Runs the full Modeling → Physics chain (plus the `update_speed` fast path)
 against two mocked scenarios: a fully-specified loop (grid+legend, spoken
 speed/entity — this one loses traction on the mocked sketch's sharp first
@@ -65,10 +70,10 @@ every `assumed_default` fallback.
 
 - Extraction Agent (real sketch digitization + STT)
 - SurrealDB memory read/write
-- anchorbrowser lookup (currently a hardcoded `KNOWN_SPECS` dict in
-  `modeling_agent.py` stands in for it)
 - LLM-backed curve classification for ambiguous sketches (currently a
   vertical-extent heuristic); see `../docs/bedrock-integration.md` for the
   LLM backend to use once this is added.
-- Agent-generated (vs. fixed-template) solver code for the Physics Agent —
-  same documented shortcut as the Modeling Agent's heuristic classification.
+
+Physics deliberately uses a predefined solver for the ramp/projectile scenario.
+Uncached car masses can be fetched through Anchor Browser when configured;
+the local `KNOWN_SPECS` dictionary and assumed defaults cover other cases.
