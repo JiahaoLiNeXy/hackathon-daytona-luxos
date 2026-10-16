@@ -1,21 +1,29 @@
 """Modeling Agent — turns raw Extraction Agent output into the well-posed
 problem spec the Physics Agent expects.
 
-See docs/modeling-agent-spec.md for the full contract. This is the POC
-implementation: deterministic heuristics for every step (scale resolution,
-curve classification, ground-profile derivation, speed/downforce
-resolution). Car mass now has a real anchorbrowser-backed lookup
-(car_spec_lookup.py) for entities outside the local KNOWN_SPECS cache. No
-LLM call yet for curve classification, and no SurrealDB — still-documented
-extension points, not silently skipped.
+See docs/modeling-agent-spec.md for the full contract. An LLM call
+(llm_client.py, mirrors capture/respond.py's Anthropic/Bedrock dual path)
+now does the two judgment-heavy steps: classifying which curve is the ramp
+vs. the ground, and tagging each spoken/written quantity with what it
+refers to (entry speed, car mass, downforce, or other) -- this is what lets
+a spoken "the car weighs 1500 kg" actually reach the problem spec instead
+of being silently dropped. Everything else (unit conversion, pixel->meter
+math, the cache/memory/anchorbrowser/default fallback order) stays plain
+deterministic code. If the LLM is unavailable or fails, every step falls
+back to the original heuristics -- this never blocks on it. No SurrealDB
+(abandoned for this hackathon; memory recall still accepts a plain dict for
+whatever persistence is added later).
 """
 from __future__ import annotations
 
+import json
 import math
 import re
+from dataclasses import asdict
 from typing import Optional
 
 from car_spec_lookup import CarSpecLookup
+from llm_client import call_text, extract_json
 from tracing import traced
 from schemas import (
     Curve,
@@ -26,6 +34,28 @@ from schemas import (
     ProblemSpec,
     RampPoint,
 )
+
+FORMULATE_SYSTEM_PROMPT = """You help formulate a physical problem from a sketch extraction. You get a list of
+hand-drawn curves (each a list of pixel points, no semantic label), any detected grid, handwritten labels, the
+voice transcript, named entities, and quantities mentioned (value + unit).
+
+Reply with ONE JSON object and nothing else:
+{
+  "ramp_curve_id": "<id of the curve that is the ramp/road the car travels on, or null if none>",
+  "ground_curve_id": "<id of the curve that is the ground/landing surface beyond the ramp, or null if there is none drawn>",
+  "quantity_roles": [{"text": "<exact text from mentioned_quantities>", "role": "entry_speed" | "car_mass" | "downforce" | "other"}]
+}
+
+Rules:
+- ramp_curve_id: the curve the car drives up/along before any jump. Usually the one with the most vertical extent,
+  but use the drawing and transcript together -- a loop, ramp, or incline the user describes the car moving on.
+- ground_curve_id: a separate curve representing where the car lands (flat ground, far side of a gap, lower
+  level). null if no such curve is drawn (assume flat ground at the ramp's base level).
+- quantity_roles: label every quantity in mentioned_quantities exactly once. "entry_speed" is how fast the car is
+  going. "car_mass" is the car's weight/mass. "downforce" is a stated downforce/traction force in Newtons.
+  Anything else (lengths, angles, unrelated numbers) is "other".
+- If you are not confident about a curve's role, return null rather than guessing.
+"""
 
 # ---- POC defaults (assumed when nothing better is available) ---------------
 # These stand in for "assumed_default" sourcing per the spec. They are not
@@ -55,6 +85,22 @@ SPEED_UNIT_TO_MS = {
     "ms": 1.0,
 }
 
+MASS_UNIT_TO_KG = {
+    "kg": 1.0,
+    "kilogram": 1.0,
+    "kilograms": 1.0,
+    "lb": 0.453592,
+    "lbs": 0.453592,
+    "pound": 0.453592,
+    "pounds": 0.453592,
+}
+
+DOWNFORCE_UNIT_TO_N = {
+    "n": 1.0,
+    "newton": 1.0,
+    "newtons": 1.0,
+}
+
 GAP_EPSILON_M = 0.3   # min horizontal separation to call it a "gap"
 LEVEL_EPSILON_M = 0.3  # min vertical offset to call it "lower_level"
 
@@ -79,8 +125,11 @@ class ModelingAgent:
                 ),
             )
 
+        formulation = self._llm_formulate(extraction)
         scale, scale_source = self._resolve_scale(extraction)
-        ramp_px, ground_px = self._classify_curves(extraction.sketch.curves)
+        ramp_px, ground_px = self._apply_formulation_or_classify(
+            extraction.sketch.curves, formulation
+        )
 
         if ramp_px is None or len(ramp_px.points_px) < 2:
             return ModelingResult(
@@ -102,8 +151,11 @@ class ModelingAgent:
         entry_speed_ms, speed_source = self._resolve_entry_speed(
             extraction.mentioned_quantities
         )
-        mass_kg, mass_source, downforce_n, downforce_source = self._resolve_car_specs(
-            extraction.mentioned_entities, memory
+        mass_kg, mass_source = self._resolve_mass_kg(
+            extraction.mentioned_entities, memory, formulation, extraction.mentioned_quantities
+        )
+        downforce_n, downforce_source = self._resolve_downforce_n(
+            extraction.mentioned_entities, memory, formulation, extraction.mentioned_quantities
         )
 
         problem_spec = ProblemSpec(
@@ -145,14 +197,52 @@ class ModelingAgent:
                 return float(match.group(1))
         return None
 
-    # ---- curve classification -------------------------------------------
+    # ---- LLM-backed problem formulation ----------------------------------
+
+    @traced("Formulate problem (LLM)", "TOOL", inputs=("extraction",))
+    def _llm_formulate(self, extraction: ExtractionOutput) -> Optional[dict]:
+        """Classifies ramp vs. ground curve and tags each quantity's role.
+        Returns None on any failure -- no credentials, bad response -- and
+        every caller below falls back to its own heuristic unchanged."""
+        user_text = json.dumps({
+            "curves": [{"id": c.id, "points_px": c.points_px} for c in extraction.sketch.curves],
+            "grid_detected": asdict(extraction.sketch.grid_detected)
+            if extraction.sketch.grid_detected
+            else None,
+            "labels_text": extraction.sketch.labels_text,
+            "voice_transcript": extraction.voice_transcript,
+            "mentioned_entities": extraction.mentioned_entities,
+            "mentioned_quantities": [
+                {"text": q.text, "value": q.value, "unit": q.unit}
+                for q in extraction.mentioned_quantities
+            ],
+        })
+        reply = call_text(FORMULATE_SYSTEM_PROMPT, user_text, max_tokens=500)
+        return extract_json(reply)
+
+    def _apply_formulation_or_classify(
+        self, curves: list[Curve], formulation: Optional[dict]
+    ) -> tuple[Optional[Curve], Optional[Curve]]:
+        by_id = {c.id: c for c in curves}
+        ramp_id = formulation.get("ramp_curve_id") if formulation else None
+        if ramp_id in by_id:
+            ramp = by_id[ramp_id]
+            if formulation is not None and "ground_curve_id" in formulation:
+                ground_id = formulation["ground_curve_id"]
+                return ramp, by_id.get(ground_id) if ground_id else None
+            remaining = [c for c in curves if c.id != ramp.id]
+            ground = min(remaining, key=self._vertical_extent) if remaining else None
+            return ramp, ground
+        return self._classify_curves(curves)
+
+    # ---- curve classification (fallback when the LLM is unavailable) ----
 
     @staticmethod
     def _vertical_extent(curve: Curve) -> float:
         ys = [p[1] for p in curve.points_px]
         return max(ys) - min(ys)
 
-    @traced("Classify ramp and ground", "CHAIN", inputs=("curves",))
+    @traced("Classify ramp and ground (heuristic)", "CHAIN", inputs=("curves",))
     def _classify_curves(
         self, curves: list[Curve]
     ) -> tuple[Optional[Curve], Optional[Curve]]:
@@ -222,40 +312,95 @@ class ModelingAgent:
                 return q.value * SPEED_UNIT_TO_MS[unit], "spoken"
         return DEFAULT_ENTRY_SPEED_MS, "assumed_default"
 
-    @traced("Resolve vehicle specs", "CHAIN", inputs=("entities", "memory"))
-    def _resolve_car_specs(
-        self, entities: list[str], memory: Optional[dict[str, float]]
-    ) -> tuple[float, str, float, str]:
+    @staticmethod
+    def _spoken_value(
+        formulation: Optional[dict], quantities, role: str, unit_table: dict[str, float]
+    ) -> Optional[float]:
+        """A quantity the LLM tagged with `role`, converted via `unit_table`.
+        None if there's no formulation, nothing tagged with that role, or
+        the tagged quantity's unit isn't one we know how to convert."""
+        if not formulation:
+            return None
+        tagged_texts = {
+            r["text"] for r in (formulation.get("quantity_roles") or []) if r.get("role") == role
+        }
+        for q in quantities:
+            if q.text in tagged_texts:
+                unit = q.unit.lower().strip()
+                if unit in unit_table:
+                    return q.value * unit_table[unit]
+        return None
+
+    @staticmethod
+    def _first_unit_match(quantities, unit_table: dict[str, float]) -> Optional[float]:
+        """Weak fallback used only when the LLM is unavailable: the first
+        quantity whose unit matches, with no role disambiguation."""
+        for q in quantities:
+            unit = q.unit.lower().strip()
+            if unit in unit_table:
+                return q.value * unit_table[unit]
+        return None
+
+    @traced("Resolve car mass", "CHAIN", inputs=("entities", "memory", "formulation"))
+    def _resolve_mass_kg(
+        self,
+        entities: list[str],
+        memory: Optional[dict[str, float]],
+        formulation: Optional[dict],
+        quantities,
+    ) -> tuple[float, str]:
+        spoken = self._spoken_value(formulation, quantities, "car_mass", MASS_UNIT_TO_KG)
+        if spoken is not None:
+            return spoken, "spoken"
+        if formulation is None:
+            # No LLM available to disambiguate -- still don't drop an
+            # unambiguous kg/lb value outright.
+            weak = self._first_unit_match(quantities, MASS_UNIT_TO_KG)
+            if weak is not None:
+                return weak, "spoken (unit-matched, no LLM confirmation)"
+
         for entity in entities:
             key = entity.lower().strip()
             for known_key, spec in KNOWN_SPECS.items():
                 if known_key in key:
-                    return (
-                        spec["mass_kg"],
-                        "looked_up:local_spec_db",
-                        spec["downforce_capability_n"],
-                        "looked_up:local_spec_db",
-                    )
-        if memory:
-            if "car_mass_kg" in memory and "downforce_capability_n" in memory:
-                return (
-                    memory["car_mass_kg"],
-                    "memory_recall",
-                    memory["downforce_capability_n"],
-                    "memory_recall",
-                )
+                    return spec["mass_kg"], "looked_up:local_spec_db"
+        if memory and "car_mass_kg" in memory:
+            return memory["car_mass_kg"], "memory_recall"
 
-        # Not cached and not recalled from memory: try a live lookup for the
-        # mass only (see car_spec_lookup.py for why downforce isn't included).
+        # Not cached and not recalled from memory: try a live lookup.
         # Gracefully returns (None, None) if unconfigured/unavailable/failed.
         if entities:
             mass_kg, source_url = self.car_spec_lookup.lookup_mass_kg(entities[0])
             if mass_kg:
-                mass_source = (
+                source = (
                     f"looked_up:anchorbrowser({source_url})"
                     if source_url
                     else "looked_up:anchorbrowser"
                 )
-                return mass_kg, mass_source, DEFAULT_DOWNFORCE_N, "assumed_default"
+                return mass_kg, source
 
-        return DEFAULT_MASS_KG, "assumed_default", DEFAULT_DOWNFORCE_N, "assumed_default"
+        return DEFAULT_MASS_KG, "assumed_default"
+
+    @traced("Resolve downforce capability", "CHAIN", inputs=("entities", "memory", "formulation"))
+    def _resolve_downforce_n(
+        self,
+        entities: list[str],
+        memory: Optional[dict[str, float]],
+        formulation: Optional[dict],
+        quantities,
+    ) -> tuple[float, str]:
+        spoken = self._spoken_value(formulation, quantities, "downforce", DOWNFORCE_UNIT_TO_N)
+        if spoken is not None:
+            return spoken, "spoken"
+
+        for entity in entities:
+            key = entity.lower().strip()
+            for known_key, spec in KNOWN_SPECS.items():
+                if known_key in key:
+                    return spec["downforce_capability_n"], "looked_up:local_spec_db"
+        if memory and "downforce_capability_n" in memory:
+            return memory["downforce_capability_n"], "memory_recall"
+
+        # downforce_capability_n isn't a standard published spec -- no live
+        # lookup for it, see car_spec_lookup.py.
+        return DEFAULT_DOWNFORCE_N, "assumed_default"
