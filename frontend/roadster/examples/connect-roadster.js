@@ -1,4 +1,5 @@
-/** Pure XY adapter. The caller must align solver coordinates with the visual model. */
+/** Legacy center-position adapter. For a Physics Agent envelope use dispatch('loadPhysicsResult', envelope),
+ * which preserves its ramp, phase, attitude, solver position and vehicle-center display offset. */
 export function physicsResultToTrajectory(result) {
   if (result?.status !== 'ok') throw new Error(result?.error?.message || 'PhysicsResult status must be "ok".');
   if (!Array.isArray(result.trajectory) || result.trajectory.length < 2) {
@@ -48,7 +49,7 @@ export function connectRoadster(view, { onReady = () => {}, onParameters = () =>
       const snapshot = api?.getReadyState();
       if (!snapshot?.ready || snapshot.protocolVersion !== 1) throw new Error('Roadster is not ready.');
       if (!snapshot.commands.includes(command)) throw new Error(`Unknown or disallowed Roadster command: ${command}`);
-      return api[command](payload); // Existing API validation and errors pass through to the caller.
+      return api[command](payload); // Also awaits runTrial/adjustRamp; computation errors reach the caller.
     },
     disconnect() {
       disconnected = true;

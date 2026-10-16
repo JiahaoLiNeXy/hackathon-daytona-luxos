@@ -1,6 +1,5 @@
 {
   "files": {
-    "src/style.css": "97adc46c54afeb62664a5840276151c7c92b2ca2bb131bcd88eec28cd030e1f5",
     "src/car.js": "17ab1a419283d8cf163e8b188ac6ca6e91cda43a020bd5ce6a778e0177c54fb8",
     "src/track.js": "facb2ce7245ebeea3b3d7d0d59ef8f61f18712c1b94aca218a197c12bdbb548b",
     "src/trajectory.js": "69edf30c75d1063c76c0ba1efd510e03a780be8ed051caefc289bd38d5319231",
@@ -12,5 +11,5 @@
     "public/models/roadster-2026.glb": "6e6ea33ceafe6100bffadb7dce01322ea012fa4b8f4fc91a1a4d2c49beacc385",
     "public/models/roadster-scene.glb": "90d4732f97bb3a581eef37053d29b2da8340b4f42f18f404e598b4998bfed941"
   },
-  "main_markup_sha256": "38ca527734fd6634f20e5c51a4d870d7235f881318f3c5e4a45bb14026458c3e"
+  "scope": "Original vehicle, track, trajectory, floating controller, photo and published GLB assets. Projector markup and styles intentionally evolve for the wall experiment."
 }

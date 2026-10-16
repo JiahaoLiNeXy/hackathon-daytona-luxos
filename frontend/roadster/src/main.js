@@ -3,141 +3,152 @@ import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import {GLTFExporter} from 'three/addons/exporters/GLTFExporter.js';
 import {createRoadster,CAR_DIMENSIONS} from './car.js';
-import {createTrack,makeDemoTrajectory,TRACK_DEFAULTS} from './track.js';
+import {rampPoint,TRACK_DEFAULTS} from './track.js';
 import {normalizeTrajectory,parseTrajectory,sampleTrajectory} from './trajectory.js';
-import {overlapsWall} from './collision.js';
 import {createFloatingPanels} from './floating-panels.js';
+import {adaptPhysicsResult} from './physics-adapter.js';
+import {createCurveTrack,validateRampCurve} from './curve-track.js';
+import {projectorMarkup} from './projector-markup.js';
 import {createIntegrationBridge} from './integration-bridge.js';
+import {overlapsWall} from './collision.js';
 import './style.css';
 
+const $=id=>document.getElementById(id);
 const embed=new URLSearchParams(location.search).get('embed')==='1';
 if(embed){document.documentElement.classList.add('embed');document.body.classList.add('embed');}
-const $=id=>document.getElementById(id);
-$('app').innerHTML=`
-<main id="desk" class="desk">
-  <section id="scene-panel" class="projection scene-panel" data-panel aria-label="Roadster module">
-    <header class="panel-handle" data-drag-handle tabindex="0" aria-label="Move Roadster">
-      <span class="handle-grip" aria-hidden="true">⠿</span><h1>Roadster</h1>
-      <button class="icon-button close-panel" data-close-panel="scene-panel" aria-label="Hide Roadster">×</button>
-    </header>
-    <div class="viewport" id="viewport"></div>
-    <div class="scene-tools"><div class="view-switch"><button id="view-scene" class="active">Scene</button><button id="view-car">Car</button><button id="view-side">Side</button></div><button id="reset-view" aria-label="Reset view">↺</button><span class="tool-spacer"></span><button id="scene-play" class="primary">▶ Play</button><button data-toggle-panel="edit-panel">Edit</button></div>
-    <span class="resize-mark" aria-hidden="true"></span>
-  </section>
-  <section id="edit-panel" class="projection edit-panel is-hidden" data-panel aria-label="Edit module">
-    <header class="panel-handle" data-drag-handle tabindex="0" aria-label="Move Edit"><span class="handle-grip" aria-hidden="true">⠿</span><h2>Edit</h2><button class="icon-button close-panel" data-close-panel="edit-panel" aria-label="Hide Edit">×</button></header>
-    <div class="panel-content">
-      <div class="row"><label for="car-scale">Car size</label><output id="scale-value">1.00×</output></div><input id="car-scale" type="range" min="0.5" max="1.6" step="0.01" value="1"/>
-      <div class="dimensions"><span id="dim-length">4.65</span><i>×</i><span id="dim-width">2.05</span><i>×</i><span id="dim-height">1.18</span><i>m</i></div>
-      <div class="rule"></div><div class="row"><label for="ramp-height">Ramp height</label><span class="input-unit"><input id="ramp-height" type="number" min="12" max="32" step="0.5" value="23"/>m</span></div>
-      <div class="rule"></div><div class="row"><label for="wall-enabled">Wall</label><input id="wall-enabled" class="toggle" type="checkbox"/></div>
-      <div id="wall-fields" hidden><div class="row"><label for="wall-height">Height</label><span class="input-unit"><input id="wall-height" type="number" min="1" max="30" step="0.5" value="12"/>m</span></div><div class="row"><label for="wall-x">Position X</label><span class="input-unit"><input id="wall-x" type="number" min="-40" max="10" step="0.5" value="-18"/>m</span></div><div id="collision-status" class="check-status" title="Bounding-box overlap at this pose only">No overlap</div></div>
-    </div>
-  </section>
-  <section id="motion-panel" class="projection motion-panel is-hidden" data-panel aria-label="Motion module">
-    <header class="panel-handle" data-drag-handle tabindex="0" aria-label="Move Motion"><span class="handle-grip" aria-hidden="true">⠿</span><h2>Motion</h2><span id="source-name" class="source-tag">Demo</span><button class="icon-button close-panel" data-close-panel="motion-panel" aria-label="Hide Motion">×</button></header>
-    <div class="panel-content"><div class="play-controls"><button id="play" class="primary">▶ Play</button><button id="restart" aria-label="Restart">↺</button><select id="speed" aria-label="Speed"><option value="0.25">¼×</option><option value="0.5">½×</option><option value="1" selected>1×</option><option value="2">2×</option></select><span id="time-label" class="time-label">0.00 / 10.00 s</span></div><input id="timeline" type="range" min="0" max="10" step="0.001" value="0" aria-label="Time"/><div class="telemetry"><span>X <b id="pos-x">−24.00</b></span><span>Y <b id="pos-y">0.63</b></span><span>Z <b id="pos-z">0.00</b></span></div></div>
-  </section>
-  <section id="assets-panel" class="projection assets-panel is-hidden" data-panel aria-label="Files module">
-    <header class="panel-handle" data-drag-handle tabindex="0" aria-label="Move Files"><span class="handle-grip" aria-hidden="true">⠿</span><h2>Files</h2><button class="icon-button close-panel" data-close-panel="assets-panel" aria-label="Hide Files">×</button></header>
-    <div class="panel-content"><button id="import-button" class="wide primary">Import</button><div class="file-actions"><button id="demo-button">Demo</button><button id="example-button">Sample</button></div><div class="rule"></div><div class="export-list"><button id="export-car"><span>Car</span><small>GLB ↧</small></button><button id="export-ramp"><span>Ramp</span><small>GLB ↧</small></button><button id="export-scene"><span>Scene</span><small>GLB ↧</small></button><button id="snapshot"><span>Image</span><small>PNG ↧</small></button></div></div>
-  </section>
-  <nav class="module-dock" aria-label="Modules"><span class="desk-mark" aria-hidden="true"><i></i></span><button data-toggle-panel="scene-panel" aria-pressed="true">Model</button><button data-toggle-panel="edit-panel" aria-pressed="false">Edit</button><button data-toggle-panel="motion-panel" aria-pressed="false">Motion</button><button data-toggle-panel="assets-panel" aria-pressed="false">Files</button></nav>
-  <input id="file-input" type="file" accept=".json,.csv" hidden/><div id="toast" class="toast" role="status"></div>
-</main>
-`;
-let panels, bridge;
-
-let renderer;
-try {renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,preserveDrawingBuffer:true});}
-catch(error){$('app').innerHTML='<div class="fatal">This browser could not start WebGL.<br>Open this local preview in Chrome or Safari with hardware acceleration enabled.</div>';throw error;}
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0x000000,0);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;
-$('viewport').append(renderer.domElement);renderer.domElement.setAttribute('aria-label','Interactive 3D Roadster and launch ramp');
-const scene=new THREE.Scene();scene.fog=null;
-const camera=new THREE.PerspectiveCamera(35,1,.05,350);
-const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.07;controls.maxDistance=130;controls.minDistance=2;controls.maxPolarAngle=Math.PI*.96;
-const room=new RoomEnvironment();const pmrem=new THREE.PMREMGenerator(renderer);const env=pmrem.fromScene(room,.035);scene.environment=env.texture;room.dispose();pmrem.dispose();
-scene.add(new THREE.HemisphereLight(0xdeecff,0x414a3b,1.2));
-const sun=new THREE.DirectionalLight(0xeaf4ff,3.0);sun.position.set(-16,38,22);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-50;sun.shadow.camera.right=50;sun.shadow.camera.top=45;sun.shadow.camera.bottom=-45;sun.shadow.camera.far=130;sun.shadow.normalBias=.03;scene.add(sun);
+$('app').innerHTML=projectorMarkup;
+const defaultCurve=()=>[...Array.from({length:17},(_,i)=>({x:-25+19*i/16,y:0})),...Array.from({length:128},(_,i)=>{const {position:p}=rampPoint((i+1)/128);return{x:p.x,y:p.y};})];
+const defaultSpec=()=>({ramp_curve_m:defaultCurve(),entry_speed_ms:22.2,car_mass_kg:1300,downforce_capability_n:150000,ground_profile:{type:'flat',landing_level_m:0}});
+let baseSpec=defaultSpec(),wallState={enabled:false,x:-18,height:3,width:8,thickness:.35};
+let scale=1,view='scene',currentTime=0,playing=false,speed=1,trajectory,physicsData=null,activeRampCurve=baseSpec.ramp_curve_m;
+let experiment={before:null,after:null,search:null},selection='before',busy=false,requestGeneration=0,requestController=null;
+let panels,bridge,track,pathLine,ghostTrack,ghostPath,ghostTrajectory,firstHitMarker,playbackAssessment=null,toastTimer;
+const rawPosition=new THREE.Vector3();
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,preserveDrawingBuffer:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0,0);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;
+renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;
+$('viewport').prepend(renderer.domElement);renderer.domElement.setAttribute('aria-label','Roadster 跑道与墙');
+const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(35,1,.05,350);
+const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.07;controls.maxPolarAngle=Math.PI*.96;
+const pmrem=new THREE.PMREMGenerator(renderer),room=new RoomEnvironment(),environment=pmrem.fromScene(room,.04);scene.environment=environment.texture;room.dispose();pmrem.dispose();
+scene.add(new THREE.HemisphereLight(0xe8f3ff,0x585348,2.6));
+const sun=new THREE.DirectionalLight(0xfff2dc,4.1);sun.position.set(-12,30,22);scene.add(sun);
 const fill=new THREE.DirectionalLight(0xbce7dc,1.5);fill.position.set(8,20,-18);scene.add(fill);
-const stage=new THREE.Mesh(new THREE.PlaneGeometry(260,260),new THREE.ShadowMaterial({opacity:.13}));stage.rotation.x=-Math.PI/2;stage.position.y=-.01;stage.receiveShadow=true;scene.add(stage);
-const grid=new THREE.GridHelper(150,75,0x35443f,0x26332f);grid.position.y=-.005;grid.material.transparent=true;grid.material.opacity=.18;grid.visible=false;scene.add(grid);
-const assets=new THREE.Group();assets.name='Roadster_Launch_Study';assets.userData={units:'m',upAxis:'Y',forwardAxis:'X',source:'Visual reconstruction; estimated dimensions; no physical calibration'};scene.add(assets);
-let track=createTrack();assets.add(track);
-const car=createRoadster();car.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});assets.add(car);
-const studioCar=createRoadster();studioCar.name='Vehicle_inspection_copy';studioCar.visible=false;scene.add(studioCar);
-const wallState={enabled:false,height:12,x:-18,width:8,thickness:.35};
+const assets=new THREE.Group();assets.name='Roadster_Launch_Study';assets.userData={units:'m',upAxis:'Y',forwardAxis:'X',source:'Visual reconstruction, not calibrated engineering model'};scene.add(assets);
+const car=createRoadster();assets.add(car);
+const ghostCar=createRoadster();ghostCar.visible=false;scene.add(ghostCar);
+ghostCar.traverse(o=>{if(o.isMesh){o.material=o.material.clone();o.material.transparent=true;o.material.opacity=.25;o.material.depthWrite=false;o.material.color?.set(0xef857a);}});
+const studioCar=createRoadster();studioCar.visible=false;scene.add(studioCar);
 const wall=new THREE.Group();wall.name='Editable_wall';
-const wallMat=new THREE.MeshStandardMaterial({color:0x9cad99,roughness:.8,metalness:.03,transparent:true,opacity:.52,side:THREE.DoubleSide});
-const wallMesh=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),wallMat);wallMesh.castShadow=true;wallMesh.receiveShadow=true;wall.add(wallMesh);
-const wallOutline=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1)),new THREE.LineBasicMaterial({color:0xc4ddba}));wall.add(wallOutline);assets.add(wall);
-let pathLine;
-let scale=1,rampHeight=TRACK_DEFAULTS.height,currentTime=0,playing=false,speed=1,view='scene';
-let trajectory=makeDemoTrajectory();let collision=false,previousFrame=performance.now();let toastTimer;let importGeneration=0;
-function toast(message){$('toast').textContent=message;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').textContent='',7000);}
-function disposeObject(root){root.traverse(o=>{o.geometry?.dispose();if(o.material){for(const m of Array.isArray(o.material)?o.material:[o.material])m.dispose();}});}
-function updateWall(){wall.visible=wallState.enabled;wall.position.set(wallState.x,wallState.height/2,0);wallMesh.scale.set(wallState.thickness,wallState.height,wallState.width);wallOutline.scale.copy(wallMesh.scale);updatePose();}
-function drawPath(){if(pathLine){scene.remove(pathLine);pathLine.geometry.dispose();pathLine.material.dispose();}const points=trajectory.samples.map(s=>new THREE.Vector3(...s.position));pathLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),new THREE.LineDashedMaterial({color:0x8ebcad,dashSize:.3,gapSize:.22,transparent:true,opacity:.38}));pathLine.name='Trajectory_preview';pathLine.computeLineDistances();pathLine.visible=view!=='car';scene.add(pathLine);}
-function syncPlay(){for(const id of ['play','scene-play'])$(id).textContent=playing?'Ⅱ Pause':'▶ Play';}
-function setTrajectory(next){
- trajectory=next;playing=false;currentTime=0;syncPlay();
- $('timeline').max=trajectory.duration;
- $('source-name').textContent=trajectory.source==='demo'?'Demo':'Imported';
- $('source-name').title=trajectory.source==='demo'?'Illustrative trajectory':trajectory.label;
- drawPath();updatePose();
- if(trajectory.warnings?.length)toast('Rotation follows path.');
+const wallMat=new THREE.MeshStandardMaterial({color:0xffb183,transparent:true,opacity:.38,roughness:.85,side:THREE.DoubleSide});
+const wallMesh=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),wallMat);
+const wallOutline=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1)),new THREE.LineBasicMaterial({color:0xffbe9b}));wall.add(wallMesh,wallOutline);assets.add(wall);
+function dispose(root){root?.traverse(o=>{o.geometry?.dispose();if(o.material)for(const m of Array.isArray(o.material)?o.material:[o.material])m.dispose();});}
+function remove(root){if(root){root.removeFromParent();dispose(root);}}
+function toast(message){$('toast').textContent=message;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').textContent='',5000);}
+function save(data,type,name){const url=URL.createObjectURL(new Blob([data],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);}
+function setBusy(value){busy=value;syncExperiment();}
+function cancelPending(){requestGeneration++;requestController?.abort();requestController=null;busy=false;}
+function clearComparison(){remove(ghostTrack);remove(ghostPath);remove(firstHitMarker);ghostTrack=ghostPath=firstHitMarker=null;ghostTrajectory=null;ghostCar.visible=false;$('scene-legend').hidden=true;}
+function invalidate(message='已改变条件，请重新试跑'){
+ cancelPending();experiment={before:null,after:null,search:null};selection='before';clearComparison();installCurve(baseSpec.ramp_curve_m);$('experiment-status').textContent=message;syncExperiment();
 }
-function regenerateDemo(){if(trajectory.source==='demo')setTrajectory(makeDemoTrajectory(rampHeight,CAR_DIMENSIONS.height*scale));else{playing=false;syncPlay();updatePose();toast('Scene updated · trajectory unchanged');}}
-function updatePose(){const pose=sampleTrajectory(trajectory,currentTime);car.position.copy(pose.position);car.quaternion.copy(pose.quaternion);car.scale.setScalar(scale);collision=overlapsWall(pose.position,pose.quaternion,CAR_DIMENSIONS,scale,wallState);wallMat.color.set(collision?0xc87552:0x9cad99);wallOutline.material.color.set(collision?0xffab7c:0xc4ddba);$('collision-status').classList.toggle('hit',collision);$('collision-status').textContent=collision?'Box overlap':'No overlap';$('timeline').value=currentTime;$('time-label').textContent=`${currentTime.toFixed(2)} / ${trajectory.duration.toFixed(2)} s`;$('pos-x').textContent=pose.position.x.toFixed(2);$('pos-y').textContent=pose.position.y.toFixed(2);$('pos-z').textContent=pose.position.z.toFixed(2);}
-function setView(next){view=next;const inspection=next==='car';assets.visible=!inspection;studioCar.visible=inspection;studioCar.scale.setScalar(scale);studioCar.position.set(0,CAR_DIMENSIONS.height*scale/2,0);pathLine.visible=!inspection;for(const [id,key] of [['view-scene','scene'],['view-car','car'],['view-side','side']])$(id).classList.toggle('active',next===key);
- if(inspection){controls.target.set(0,.4,0);camera.position.set(6,3.3,6);controls.minDistance=2;controls.maxDistance=22;}
- else if(next==='side'){controls.target.set(-11,10,0);camera.position.set(-11,10,69);controls.minDistance=10;controls.maxDistance=140;}
- else{controls.target.set(-10,9,0);camera.position.set(-40,24,53);controls.minDistance=6;controls.maxDistance=140;}
- controls.update();}
-function setScale(value,source='api'){if(!Number.isFinite(value)||value<.5||value>1.6)throw new Error('Vehicle scale must be between 0.5 and 1.6.');scale=value;$('car-scale').value=value;$('scale-value').textContent=`${value.toFixed(2)}×`;$('dim-length').textContent=(CAR_DIMENSIONS.length*scale).toFixed(2);$('dim-width').textContent=(CAR_DIMENSIONS.width*scale).toFixed(2);$('dim-height').textContent=(CAR_DIMENSIONS.height*scale).toFixed(2);studioCar.scale.setScalar(scale);studioCar.position.y=CAR_DIMENSIONS.height*scale/2;regenerateDemo();bridge?.notifyParametersChanged(source);}
-function setRampHeight(value,source='api'){if(!Number.isFinite(value)||value<12||value>32)throw new Error('Ramp height must be between 12 and 32 metres.');rampHeight=value;$('ramp-height').value=value;assets.remove(track);disposeObject(track);track=createTrack({height:value});assets.add(track);regenerateDemo();bridge?.notifyParametersChanged(source);}
-function changeWall(patch,source='api'){if(!patch||typeof patch!=='object'||Array.isArray(patch)||Object.keys(patch).some(key=>!['enabled','x','height'].includes(key)))throw new Error('Wall accepts only enabled, x, and height.');const next={...wallState,...patch};if(typeof next.enabled!=='boolean'||!Number.isFinite(next.x)||next.x < -40||next.x>10||!Number.isFinite(next.height)||next.height<1||next.height>30)throw new Error('Wall: height 1–30 m, X position −40–10 m.');Object.assign(wallState,next);$('wall-enabled').checked=next.enabled;$('wall-height').value=next.height;$('wall-x').value=next.x;$('wall-fields').hidden=!next.enabled;updateWall();bridge?.notifyParametersChanged(source);}
+function syncExperiment(){
+ $('wall-fields').hidden=!wallState.enabled;$('wall-add').hidden=wallState.enabled;$('wall-hint').hidden=!wallState.enabled;
+ $('wall-x').value=wallState.x;$('wall-position').value=wallState.x;$('wall-height').value=wallState.height;$('entry-speed').value=baseSpec.entry_speed_ms;
+ $('trial-button').disabled=busy||!wallState.enabled;$('trial-button').textContent=busy?'计算中…':'试跑';
+ $('adjust-button').disabled=busy||!wallState.enabled||!experiment.before;
+ $('comparison-results').hidden=!experiment.before;
+ $('before-result').textContent=describeResult(experiment.before);$('after-result').textContent=experiment.after?describeResult(experiment.after):experiment.search?'未找到可行方案':'待调整';
+ $('before-result').dataset.status=experiment.before?.assessment.status||'';$('after-result').dataset.status=experiment.after?.assessment.status||'';
+ $('comparison-actions').hidden=!experiment.after;
+ for(const [id,key] of [['show-before','before'],['show-after','after'],['show-compare','compare']])$(id).classList.toggle('active',selection===key);
+ $('adjustment-detail').textContent=experiment.search?(experiment.after?`局部抬升 ${experiment.after.adjustment.liftM.toFixed(1)} m · 已验算 ${experiment.search.evaluated} 个方案`:`已验算 ${experiment.search.evaluated} 个方案`):'';
+ $('export-result').disabled=!experiment.before;
+}
+function describeResult(result){if(!result)return'—';if(!result.result.metrics.traction_ok)return'失去附着';return result.assessment.status==='clear'?'避开墙':result.assessment.status==='collision'?'碰到墙':'无法确认';}
+function drawPath(data,color,opacity=.7){const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(data.samples.map(s=>new THREE.Vector3(...s.position))),new THREE.LineDashedMaterial({color,dashSize:.32,gapSize:.22,transparent:true,opacity}));line.computeLineDistances();scene.add(line);return line;}
+function syncPlay(){const ready=trajectory&&trajectory.samples.length>1;for(const id of ['play','restart','timeline','speed'])$(id).disabled=!ready||busy;$('play').textContent=playing?'Ⅱ 暂停':'▶ 播放';}
+function setTrajectory(next){trajectory=next;playing=false;currentTime=0;remove(pathLine);pathLine=next.samples.length>1?drawPath(next,selection==='before'?0xef978c:0x9de6cc):null;$('timeline').max=next.duration;syncPlay();updatePose();}
+function installCurve(points){const copy=validateRampCurve(points),next=createCurveTrack(copy);remove(track);track=next;assets.add(track);activeRampCurve=copy;physicsData=null;playbackAssessment=null;
+ const a=copy[0],b=copy[1],angle=Math.atan2(b.y-a.y,b.x-a.x);setTrajectory({source:'curve',duration:0,samples:[{t:0,position:[a.x,a.y,0],quaternion:[0,0,Math.sin(angle/2),Math.cos(angle/2)]}]});$('source-name').textContent='待试跑';$('physics-readout').hidden=true;
+}
+function applyPhysics(payload,assessment=null){const next=adaptPhysicsResult(payload),nextTrack=createCurveTrack(next.problemSpec.ramp_curve_m);remove(track);track=nextTrack;assets.add(track);activeRampCurve=structuredClone(next.problemSpec.ramp_curve_m);physicsData=next;playbackAssessment=assessment;setTrajectory(next.trajectory);$('source-name').textContent=selection==='compare'?'前后对比':selection==='after'?'调整后':'调整前';$('physics-readout').hidden=false;}
+function modelPose(target,data,time){const pose=sampleTrajectory(data,time);target.position.copy(pose.position);target.quaternion.copy(pose.quaternion);target.scale.setScalar(scale);if(data.source==='physics'||data.source==='curve')target.position.add(new THREE.Vector3(0,CAR_DIMENSIONS.height*scale/2+.04,0).applyQuaternion(pose.quaternion));return pose;}
+function updatePose(){if(!trajectory)return;const pose=modelPose(car,trajectory,currentTime);rawPosition.copy(pose.position);
+ if(ghostTrajectory){const hit=experiment.before?.assessment.firstHit?.t;modelPose(ghostCar,ghostTrajectory,Math.min(currentTime,hit??ghostTrajectory.duration));}
+ const hit=playbackAssessment?.firstHit?.t;const touching=hit!==undefined&&currentTime>=hit-.03;wallMat.color.set(touching?0xff705b:0xffb183);
+ $('timeline').value=currentTime;$('time-label').textContent=`${currentTime.toFixed(2)} / ${trajectory.duration.toFixed(2)} s`;
+ if(physicsData)$('physics-readout').textContent=selection==='compare'?'原路线停在碰撞处 · 新路线继续试跑':touching?'车身包络碰到墙':playbackAssessment?.status==='clear'?'整段轨迹通过墙体检查':'实时求解轨迹';
+}
+function renderComparison(mode='compare',fit=false){if(!experiment.before)return;selection=mode;clearComparison();const shown=mode==='before'||!experiment.after?experiment.before:experiment.after;applyPhysics(shown,shown.assessment);
+ if(mode==='compare'&&experiment.after){
+  ghostTrack=createCurveTrack(experiment.before.problemSpec.ramp_curve_m);ghostTrack.traverse(o=>{if(o.isMesh){o.material=o.material.clone();o.material.transparent=true;o.material.opacity=.15;o.material.depthWrite=false;o.material.color?.set(0xef857a);}});scene.add(ghostTrack);
+  ghostTrajectory=adaptPhysicsResult(experiment.before).trajectory;ghostPath=drawPath(ghostTrajectory,0xffa299,.52);ghostCar.visible=view!=='car';$('scene-legend').hidden=false;
+ }
+ const hit=experiment.before.assessment.firstHit;if(hit){firstHitMarker=new THREE.Mesh(new THREE.SphereGeometry(.36,16,12),new THREE.MeshBasicMaterial({color:0xff9877,transparent:true,opacity:.9}));firstHitMarker.position.fromArray(hit.displayPosition);scene.add(firstHitMarker);}
+ syncExperiment();updatePose();if(fit)fitScene();
+}
+function updateWall(){wall.visible=wallState.enabled;wall.position.set(wallState.x,wallState.height/2,0);wallMesh.scale.set(wallState.thickness,wallState.height,wallState.width);wallOutline.scale.copy(wallMesh.scale);}
+function changeWall(patch,source='api'){if(!patch||typeof patch!=='object'||Array.isArray(patch)||Object.keys(patch).some(key=>!['enabled','x','height'].includes(key)))throw new Error('Wall accepts only enabled, x, and height.');const next={...wallState,...patch};if(typeof next.enabled!=='boolean'||!Number.isFinite(next.x)||next.x < -35||next.x>5||!Number.isFinite(next.height)||next.height<1||next.height>25||next.width!==8||next.thickness!==.35)throw new Error('墙位置 −35 至 5 m，高度 1 至 25 m');wallState=next;invalidate(next.enabled?'墙已放好，可以试跑':'放一堵墙，开始试验');updateWall();bridge?.notifyParametersChanged(source);}
 function setPlaybackRate(value){if(![.25,.5,1,2].includes(value))throw new Error('Playback rate must be 0.25, 0.5, 1, or 2.');speed=value;$('speed').value=String(value);return speed;}
-function guard(action){try{action();}catch(error){toast(error.message);}}
-async function importFile(file){if(!file)return;const generation=++importGeneration;try{if(file.size>10*1024*1024)throw new Error('Trajectory file must be under 10 MB.');const text=await file.text();if(generation!==importGeneration)return;const next=parseTrajectory(text,file.name);setTrajectory(next);setView('scene');toast(`Imported · ${next.samples.length.toLocaleString()} poses`);}catch(error){if(generation===importGeneration)toast(error.message);}finally{$('file-input').value='';}}
-$('import-button').onclick=()=>$('file-input').click();$('file-input').onchange=e=>importFile(e.target.files[0]);
-$('viewport').addEventListener('dragover',e=>e.preventDefault());$('viewport').addEventListener('drop',e=>{e.preventDefault();importFile(e.dataTransfer.files[0]);});
-function togglePlayback(){if(currentTime>=trajectory.duration)currentTime=0;playing=!playing;syncPlay();if(view==='car')setView('scene');panels.show('scene-panel');}
-$('play').onclick=()=>{togglePlayback();panels.bringToFront('motion-panel');};$('scene-play').onclick=togglePlayback;
-$('restart').onclick=()=>{playing=false;currentTime=0;syncPlay();updatePose();};
-$('timeline').oninput=e=>{playing=false;syncPlay();currentTime=Number(e.target.value);updatePose();};
-$('speed').onchange=e=>guard(()=>setPlaybackRate(Number(e.target.value)));
-$('car-scale').oninput=e=>guard(()=>setScale(Number(e.target.value),'ui'));
-$('ramp-height').onchange=e=>guard(()=>setRampHeight(Number(e.target.value),'ui'));
-$('wall-enabled').onchange=e=>guard(()=>changeWall({enabled:e.target.checked},'ui'));
-$('wall-height').onchange=e=>guard(()=>changeWall({height:Number(e.target.value)},'ui'));
-$('wall-x').onchange=e=>guard(()=>changeWall({x:Number(e.target.value)},'ui'));
-$('view-scene').onclick=()=>setView('scene');$('view-car').onclick=()=>{playing=false;syncPlay();setView('car');};$('view-side').onclick=()=>setView('side');$('reset-view').onclick=()=>setView(view);
-$('demo-button').onclick=()=>{importGeneration++;setTrajectory(makeDemoTrajectory(rampHeight,CAR_DIMENSIONS.height*scale));setView('scene');};
-$('example-button').onclick=async()=>{const generation=++importGeneration;try{const response=await fetch('./examples/engineer-trajectory.json');if(!response.ok)throw new Error('Example could not be loaded.');const value=await response.json();if(generation!==importGeneration)return;setTrajectory(normalizeTrajectory(value));setView('scene');toast('Sample loaded');}catch(error){toast(error.message);}};
-async function exportAsset(kind){const group=new THREE.Group();group.name=`Roadster_${kind}`;group.userData={units:'m',upAxis:'Y',forwardAxis:'X',dimensions:'Estimated, not official CAD'};if(kind==='car'){const copy=createRoadster();copy.scale.setScalar(scale);group.add(copy);}else if(kind==='ramp'){group.add(createTrack({height:rampHeight}));}else{const copy=assets.clone(true);copy.visible=true;group.add(copy);}try{const data=await new GLTFExporter().parseAsync(group,{binary:true});const url=URL.createObjectURL(new Blob([data],{type:'model/gltf-binary'}));const anchor=document.createElement('a');anchor.href=url;anchor.download=`roadster-${kind}.glb`;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),2000);toast(`${kind[0].toUpperCase()+kind.slice(1)} saved`);}catch(error){toast(`Export failed: ${error.message}`);}finally{if(kind!=='scene')disposeObject(group);}}
-$('snapshot').onclick=()=>{renderer.render(scene,camera);renderer.domElement.toBlob(blob=>{if(!blob)return;const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`roadster-${view}.png`;a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);});};
-for(const kind of ['car','ramp','scene'])$(`export-${kind}`).onclick=()=>exportAsset(kind);
-// Direct module integration. Explicit methods, no network, no eval. The iframe bridge accepts only its same-origin parent.
-window.roadsterSim=Object.freeze({
- loadTrajectory(data){importGeneration++;const next=normalizeTrajectory(data);setTrajectory(next);return {samples:next.samples.length,duration:next.duration,warnings:next.warnings};},
- play(){if(currentTime>=trajectory.duration)currentTime=0;playing=true;syncPlay();if(view==='car')setView('scene');panels.show('scene-panel');},
- pause(){playing=false;syncPlay();},
- seek(t){if(!Number.isFinite(t))throw new Error('Time must be a finite number.');currentTime=THREE.MathUtils.clamp(t,0,trajectory.duration);playing=false;syncPlay();updatePose();},
- setVehicleScale:setScale,setRampHeight,setWall:changeWall,setPlaybackRate,
- getReadyState(){return bridge.getReadyState();},
- reset(){playing=false;currentTime=0;syncPlay();updatePose();},
- setView(name){if(!['scene','side','car'].includes(name))throw new Error('Unknown view.');setView(name);},
- showModule(id){panels.show(id);},
- hideModule(id){panels.hide(id);},
- moveModule({id,x,y}){panels.move(id,{x,y});},
- getState(){return {modules:panels.getState(),time:currentTime,duration:trajectory.duration,playing,playbackRate:speed,parameterRevision:bridge?.getRevision()??0,source:trajectory.source,position:car.position.toArray(),quaternion:car.quaternion.toArray(),scale,rampHeight,wall:{...wallState},overlapAtCurrentPose:collision,view};},
- exportGLB:exportAsset
-});
-const ro=new ResizeObserver(()=>{const {width,height}=$('viewport').getBoundingClientRect();if(width&&height){renderer.setSize(width,height);camera.aspect=width/height;camera.updateProjectionMatrix();}});ro.observe($('viewport'));
-setTrajectory(trajectory);setView('scene');updateWall();
-panels=createFloatingPanels({root:$('desk'),bottomInset:84,onVisibilityChange(id,visible){if(!visible&&id==='scene-panel'){playing=false;syncPlay();}}});
-renderer.setAnimationLoop(()=>{const now=performance.now(),dt=Math.min((now-previousFrame)/1000,.1);previousFrame=now;if(playing){currentTime=Math.min(trajectory.duration,currentTime+dt*speed);if(currentTime>=trajectory.duration){playing=false;syncPlay();}updatePose();}controls.update();if(!$('scene-panel').classList.contains('is-hidden'))renderer.render(scene,camera);});
+function setEntrySpeed(value,source='api'){if(!Number.isFinite(value)||value<5||value>40)throw new Error('入场速度 5 至 40 m/s');baseSpec.entry_speed_ms=value;invalidate();bridge?.notifyParametersChanged(source);return value;}
+function inputRampHeight(){return Math.max(...baseSpec.ramp_curve_m.map(point=>point.y));}
+function fitScene(){if(view==='car')return;const box=new THREE.Box3().setFromObject(track);if(wall.visible)box.union(new THREE.Box3().setFromObject(wall));for(const item of [experiment.before,experiment.after])if(item)for(const p of item.result.trajectory)box.expandByPoint(new THREE.Vector3(p.x,p.y,0));if(trajectory.samples.length>1)for(const p of trajectory.samples)box.expandByPoint(new THREE.Vector3(...p.position));box.expandByScalar(3);
+ const center=box.getCenter(new THREE.Vector3()),radius=box.getSize(new THREE.Vector3()).length()/2,direction=new THREE.Vector3(...(view==='side'?[0,0,1]:[-.22,.3,1])).normalize(),right=new THREE.Vector3().crossVectors(camera.up,direction).normalize(),up=new THREE.Vector3().crossVectors(direction,right).normalize(),tanY=Math.tan(THREE.MathUtils.degToRad(camera.fov/2)),tanX=tanY*camera.aspect;let distance=1;
+ for(const x of [box.min.x,box.max.x])for(const y of [box.min.y,box.max.y])for(const z of [box.min.z,box.max.z]){const p=new THREE.Vector3(x,y,z).sub(center);distance=Math.max(distance,p.dot(direction)+Math.max(Math.abs(p.dot(right))/tanX,Math.abs(p.dot(up))/tanY));}
+ distance*=1.08;controls.target.copy(center);camera.position.copy(center).addScaledVector(direction,distance);controls.minDistance=4;controls.maxDistance=Math.max(140,distance*3);camera.far=Math.max(350,distance*5);camera.updateProjectionMatrix();controls.update();
+}
+function setView(name){if(!['scene','side','car'].includes(name))throw new Error('未知视角');view=name;const inspection=name==='car';assets.visible=!inspection;studioCar.visible=inspection;studioCar.scale.setScalar(scale);studioCar.position.set(0,CAR_DIMENSIONS.height*scale/2,0);for(const item of [pathLine,ghostTrack,ghostPath,firstHitMarker])if(item)item.visible=!inspection;ghostCar.visible=!inspection&&!!ghostTrajectory;for(const [id,key] of [['view-scene','scene'],['view-side','side'],['view-car','car']])$(id).classList.toggle('active',name===key);
+ if(inspection){playing=false;syncPlay();controls.target.set(0,.4,0);camera.position.set(6,3.3,6);controls.minDistance=2;controls.maxDistance=22;controls.update();}else fitScene();
+}
+async function runExperiment(action){if(!wallState.enabled)throw new Error('请先放墙');if(action==='adjust'&&!experiment.before)throw new Error('请先试跑');cancelPending();const generation=requestGeneration,controller=new AbortController();requestController=controller;playing=false;setBusy(true);syncPlay();$('experiment-status').textContent=action==='trial'?'正在计算原路线…':'正在按墙的位置调整并验算…';
+ try{const response=await fetch('/api/obstacle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,problemSpec:baseSpec,wall:wallState,scale}),signal:controller.signal});const data=await response.json();if(!response.ok)throw new Error(data.error||'计算服务不可用');if(generation!==requestGeneration)return;
+  experiment=data;selection=action==='adjust'&&data.after?'compare':'before';setView('scene');renderComparison(selection,true);panels.show('motion-panel');
+  $('experiment-status').textContent=action==='trial'?(data.before.assessment.status==='collision'?'碰到墙了，试着调整跑道':describeResult(data.before)==='避开墙'?'原路线已避开这堵墙':'原路线未通过，请调整'):data.after?'找到可行跑道':`当前搜索范围内未找到可行跑道`;
+  currentTime=0;playing=true;setBusy(false);syncPlay();return structuredClone(data);
+ }catch(error){if(generation!==requestGeneration||error.name==='AbortError')return;$('experiment-status').textContent=`未完成：${error.message}`;throw error;}
+ finally{if(generation===requestGeneration){requestController=null;setBusy(false);syncPlay();}}
+}
+function guard(fn){return(...args)=>{try{Promise.resolve(fn(...args)).catch(e=>toast(e.message));}catch(e){toast(e.message);}};}
+function togglePlayback(){if(trajectory.samples.length<2||busy)return;if(currentTime>=playEnd())currentTime=0;playing=!playing;if(view==='car')setView('scene');syncPlay();}
+function playEnd(){return playbackAssessment?.firstHit&&selection!=='compare'?Math.min(trajectory.duration,playbackAssessment.firstHit.t):trajectory.duration;}
+$('wall-add').onclick=guard(()=>changeWall({enabled:true},'ui'));$('wall-remove').onclick=guard(()=>changeWall({enabled:false},'ui'));
+$('wall-x').onchange=guard(e=>changeWall({x:Number(e.target.value)},'ui'));$('wall-position').oninput=guard(e=>changeWall({x:Number(e.target.value)},'ui'));$('wall-height').onchange=guard(e=>changeWall({height:Number(e.target.value)},'ui'));
+$('entry-speed').onchange=guard(e=>setEntrySpeed(Number(e.target.value),'ui'));
+$('trial-button').onclick=guard(()=>runExperiment('trial'));$('adjust-button').onclick=guard(()=>runExperiment('adjust'));
+for(const [id,key] of [['show-before','before'],['show-after','after'],['show-compare','compare']])$(id).onclick=()=>renderComparison(key);
+$('play').onclick=togglePlayback;$('restart').onclick=()=>{currentTime=0;playing=true;syncPlay();updatePose();};$('timeline').oninput=e=>{currentTime=Number(e.target.value);playing=false;syncPlay();updatePose();};$('speed').onchange=guard(e=>setPlaybackRate(Number(e.target.value)));
+for(const [id,key] of [['view-scene','scene'],['view-side','side'],['view-car','car']])$(id).onclick=()=>setView(key);$('reset-view').onclick=()=>setView(view);
+// A wall is edited directly on the projected model; orbit is suspended during the drag.
+const raycaster=new THREE.Raycaster(),dragPlane=new THREE.Plane(new THREE.Vector3(0,0,1),0);let wallDrag=null;
+function pointOnPlane(event){const rect=renderer.domElement.getBoundingClientRect();raycaster.setFromCamera(new THREE.Vector2((event.clientX-rect.left)/rect.width*2-1,-(event.clientY-rect.top)/rect.height*2+1),camera);return raycaster.ray.intersectPlane(dragPlane,new THREE.Vector3());}
+renderer.domElement.addEventListener('pointerdown',event=>{if(event.button!==0||!wallState.enabled||view==='car')return;const point=pointOnPlane(event);if(!point||!raycaster.intersectObject(wallMesh).length)return;wallDrag={pointer:event.pointerId,offset:wallState.x-point.x};controls.enabled=false;renderer.domElement.setPointerCapture(event.pointerId);event.stopImmediatePropagation();event.preventDefault();},true);
+renderer.domElement.addEventListener('pointermove',event=>{if(!wallDrag||wallDrag.pointer!==event.pointerId)return;const point=pointOnPlane(event);if(point)changeWall({x:Math.round(THREE.MathUtils.clamp(point.x+wallDrag.offset,-35,5)*4)/4},'ui');event.stopImmediatePropagation();},true);
+for(const type of ['pointerup','pointercancel','lostpointercapture'])renderer.domElement.addEventListener(type,()=>{wallDrag=null;controls.enabled=true;},true);
+async function exportAsset(kind){const group=new THREE.Group();group.name=`Roadster_${kind}`;group.userData={units:'m',upAxis:'Y',forwardAxis:'X'};if(kind==='car'){const copy=createRoadster();copy.scale.setScalar(scale);group.add(copy);}else if(kind==='ramp')group.add(createCurveTrack(activeRampCurve));else{const copy=assets.clone(true);copy.visible=true;group.add(copy);}try{save(await new GLTFExporter().parseAsync(group,{binary:true}),'model/gltf-binary',`roadster-${kind}.glb`);toast('已导出');}finally{if(kind!=='scene')dispose(group);}}
+for(const kind of ['car','ramp','scene'])$(`export-${kind}`).onclick=guard(()=>exportAsset(kind));$('export-result').onclick=()=>save(JSON.stringify({wall:wallState,scale,...experiment},null,2),'application/json','roadster-wall-experiment.json');
+$('snapshot').onclick=()=>{renderer.render(scene,camera);renderer.domElement.toBlob(blob=>{if(blob)save(blob,'image/png','roadster-projection.png');});};
+function resetExperiment(source='ui'){baseSpec=defaultSpec();wallState={enabled:false,x:-18,height:3,width:8,thickness:.35};invalidate('放一堵墙，开始试验');updateWall();setView('scene');bridge?.notifyParametersChanged(source);}
+$('reset-experiment').onclick=()=>resetExperiment();
+function loadOrdinary(next){cancelPending();clearComparison();experiment={before:null,after:null,search:null};physicsData=null;playbackAssessment=null;setTrajectory(next);$('source-name').textContent='导入轨迹';$('physics-readout').hidden=true;syncExperiment();setView('scene');panels.show('motion-panel');}
+async function importFile(file){if(!file)return;cancelPending();const generation=requestGeneration;if(file.size>10*1024*1024)throw new Error('文件不能超过 10 MB');const text=await file.text();if(generation===requestGeneration)loadOrdinary(parseTrajectory(text,file.name));$('file-input').value='';}
+$('import-button').onclick=()=>$('file-input').click();$('file-input').onchange=guard(e=>importFile(e.target.files[0]));$('viewport').addEventListener('dragover',e=>e.preventDefault());$('viewport').addEventListener('drop',guard(e=>{e.preventDefault();return importFile(e.dataTransfer.files[0]);}));
+const api={
+ setRampCurve(points){const copy=validateRampCurve(points);createCurveTrack(copy).traverse(o=>{o.geometry?.dispose();if(o.material)o.material.dispose();});baseSpec.ramp_curve_m=copy;invalidate('跑道已更新，可以试跑');setView('scene');bridge?.notifyParametersChanged('api');return{points:copy.length,status:'awaiting-physics'};},
+ loadPhysicsResult(payload){const validated=adaptPhysicsResult(payload);cancelPending();clearComparison();experiment={before:null,after:null,search:null};baseSpec=structuredClone(validated.problemSpec);selection='before';applyPhysics(payload);syncExperiment();setView('scene');panels.show('motion-panel');bridge?.notifyParametersChanged('api');return{samples:trajectory.samples.length,duration:trajectory.duration,outcome:physicsData.metrics.outcome,warnings:physicsData.warnings};},
+ loadTrajectory(data){const next=normalizeTrajectory(data);loadOrdinary(next);return{samples:next.samples.length,duration:next.duration,warnings:next.warnings};},
+ setWall:changeWall,setPlaybackRate,setEntrySpeed,getReadyState(){return bridge.getReadyState();},runTrial:()=>runExperiment('trial'),adjustRamp:()=>runExperiment('adjust'),compare(mode='compare'){if(!['before','after','compare'].includes(mode))throw new Error('未知对比模式');renderComparison(mode);},
+ play(){if(trajectory.samples.length<2||busy)throw new Error('请先计算轨迹');if(currentTime>=playEnd())currentTime=0;if(view==='car')setView('scene');playing=true;syncPlay();panels.show('scene-panel');},pause(){playing=false;syncPlay();},seek(t){if(!Number.isFinite(t))throw new Error('时间必须为数字');currentTime=THREE.MathUtils.clamp(t,0,trajectory.duration);playing=false;syncPlay();updatePose();},reset(){currentTime=0;playing=false;syncPlay();updatePose();},
+ setVehicleScale(value){if(!Number.isFinite(value)||value<.5||value>1.6)throw new Error('车模比例 0.5 至 1.6');scale=value;invalidate();studioCar.scale.setScalar(scale);studioCar.position.y=CAR_DIMENSIONS.height*scale/2;bridge?.notifyParametersChanged('api');},
+ setRampHeight(value){if(!Number.isFinite(value)||value<12||value>32)throw new Error('坡道高度 12 至 32 m');baseSpec.ramp_curve_m=defaultCurve().map(p=>({x:p.x,y:p.y*value/23}));invalidate();setView('scene');bridge?.notifyParametersChanged('api');},
+ setView,showModule:id=>panels.show(id),hideModule:id=>panels.hide(id),moveModule:({id,x,y})=>panels.move(id,{x,y}),exportGLB:exportAsset,
+ getState(){return{modules:panels.getState(),time:currentTime,duration:trajectory.duration,playing,playbackRate:speed,parameterRevision:bridge?.getRevision()??0,busy,source:trajectory.source,position:rawPosition.toArray(),displayPosition:car.position.toArray(),quaternion:car.quaternion.toArray(),scale,rampHeight:inputRampHeight(),entrySpeedMs:baseSpec.entry_speed_ms,overlapAtCurrentPose:overlapsWall(car.position,car.quaternion,CAR_DIMENSIONS,scale,wallState),wall:{...wallState},ramp:{type:'curve',points:structuredClone(activeRampCurve),width:TRACK_DEFAULTS.width},physics:physicsData?{problemSpec:structuredClone(physicsData.problemSpec),metrics:structuredClone(physicsData.metrics),execution:structuredClone(physicsData.execution)}:null,experiment:structuredClone(experiment),selection,view};}
+};window.roadsterSim=Object.freeze(api);
+const ro=new ResizeObserver(()=>{const{width,height}=$('viewport').getBoundingClientRect();if(width&&height){renderer.setSize(width,height);camera.aspect=width/height;camera.updateProjectionMatrix();}});ro.observe($('viewport'));
+installCurve(baseSpec.ramp_curve_m);updateWall();syncExperiment();panels=createFloatingPanels({root:$('desk'),bottomInset:12,onVisibilityChange(id,visible){if(!visible&&id==='scene-panel'){playing=false;syncPlay();}}});
+const rect=$('viewport').getBoundingClientRect();renderer.setSize(rect.width,rect.height);camera.aspect=rect.width/rect.height;camera.updateProjectionMatrix();setView('scene');
+let previous=performance.now();renderer.setAnimationLoop(()=>{const now=performance.now(),dt=Math.min((now-previous)/1000,.1);previous=now;if(playing){currentTime=Math.min(playEnd(),currentTime+dt*speed);if(currentTime>=playEnd()){playing=false;syncPlay();}updatePose();}controls.update();if(!$('scene-panel').classList.contains('is-hidden'))renderer.render(scene,camera);});
 
-bridge=createIntegrationBridge({api:window.roadsterSim,getState:()=>window.roadsterSim.getState(),getParameters:()=>({vehicleScale:scale,rampHeight,wall:{enabled:wallState.enabled,x:wallState.x,height:wallState.height}})});
+bridge=createIntegrationBridge({api:window.roadsterSim,getState:()=>window.roadsterSim.getState(),getParameters:()=>({vehicleScale:scale,rampHeight:inputRampHeight(),wall:{enabled:wallState.enabled,x:wallState.x,height:wallState.height},entrySpeedMs:baseSpec.entry_speed_ms,rampCurve:baseSpec.ramp_curve_m})});
 bridge.announceReady();

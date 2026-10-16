@@ -1,6 +1,6 @@
 # 模型资产档案
 
-核对日期：2026-10-16。用户已认可当前车辆与坡道外形；本次工程交付补齐消息接口，沿用现有界面、模型、轨迹逻辑和参考记录。以下数值来自当前项目文件，**属于可编辑的视觉重建假设，不是 Tesla 官方尺寸、CAD 或实测数据**。
+核对日期：2026-10-16。用户已认可当前车辆与坡道外形；本次工程交付保留模型与参考记录，加入按墙重新计算的投影试验，见 [WALL-EXPERIMENT.md](WALL-EXPERIMENT.md)。以下数值来自当前项目文件，**属于可编辑的视觉重建假设，不是 Tesla 官方尺寸、CAD 或实测数据**。
 
 ## 文件与职责
 
@@ -69,4 +69,4 @@ src/track.js      facb2ce7245ebeea3b3d7d0d59ef8f61f18712c1b94aca218a197c12bdbb54
 src/trajectory.js 69edf30c75d1063c76c0ba1efd510e03a780be8ed051caefc289bd38d5319231
 ```
 
-本次交付继续引用 `public/models/` 与上述模型源码，不重新生成或覆盖这三个 GLB。`scripts/check-preservation.mjs` 同时验证模型、样式、背景和产品界面标记保持一致。
+本次交付继续引用 `public/models/` 与上述模型源码，不重新生成或覆盖这三个 GLB。`scripts/check-preservation.mjs` 验证原模型、轨迹工具、浮动模块控制器、背景与 GLB；本次按要求调整的 projector 样式和界面标记不再作为不可变基线。

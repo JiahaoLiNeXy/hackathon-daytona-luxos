@@ -211,3 +211,61 @@ test('successful and rejected async API methods produce one correlated response 
   assert.equal(messagesOf(host, 'roadster:error')[0].requestId, 'async-error');
   assert.equal(messagesOf(host, 'roadster:error')[0].error, 'Pause failed.');
 });
+
+test('wall trial and adjustment commands await computation and preserve correlated result snapshots', async () => {
+  const { host, api, send } = fixture();
+  let finishTrial;
+  const computed = { before: { assessment: { status: 'collision' } }, after: null };
+  api.runTrial = () => new Promise(resolve => { finishTrial = resolve; });
+  api.adjustRamp = async () => ({ before: computed.before, after: { assessment: { status: 'clear' } } });
+  api.compare = mode => ({ selection: mode });
+  send('runTrial', { requestId: 'trial-1' });
+  assert.equal(messagesOf(host, 'roadster:result').length, 0);
+  finishTrial(computed);
+  await new Promise(done => setImmediate(done));
+  computed.before.assessment.status = 'invalid';
+  const trial = messagesOf(host, 'roadster:result')[0];
+  assert.equal(trial.requestId, 'trial-1');
+  assert.equal(trial.result.before.assessment.status, 'collision');
+  send('adjustRamp', { requestId: 'adjust-1' });
+  await new Promise(done => setImmediate(done));
+  const adjusted = messagesOf(host, 'roadster:result')[1];
+  assert.equal(adjusted.requestId, 'adjust-1');
+  assert.equal(adjusted.result.after.assessment.status, 'clear');
+  send('compare', { payload: 'after', requestId: 'compare-1' });
+  assert.equal(messagesOf(host, 'roadster:result')[2].result.selection, 'after');
+});
+
+test('speed and same-height curve edits publish revisions without exposing mutable input', () => {
+  const { host, api, send, bridge, parameters } = fixture();
+  api.setEntrySpeed = value => { parameters.entrySpeedMs = value; };
+  api.setRampCurve = points => { parameters.rampCurve = points; };
+  send('setEntrySpeed', { payload: 22.2 });
+  const curve = [{ x: -25, y: 0 }, { x: -18, y: 1 }, { x: 0, y: 2 }];
+  send('setRampCurve', { payload: curve });
+  curve[1].y = 500;
+  assert.equal(parameters.rampCurve[1].y, 1);
+  parameters.rampCurve[1].y = 1.5;
+  bridge.notifyParametersChanged('ui');
+  const changes = messagesOf(host, 'roadster:parameters-changed');
+  assert.equal(changes.length, 3);
+  assert.deepEqual(changes.map(change => change.changed), [['entrySpeedMs'], ['rampCurve'], ['rampCurve']]);
+  assert.deepEqual(changes.map(change => change.revision), [1, 2, 3]);
+  assert.equal(changes[1].parameters.rampCurve[1].y, 1);
+  assert.equal(changes[2].source, 'ui');
+  assert.equal(changes[2].parameters.rampHeight, 2);
+  assert.equal(bridge.notifyParametersChanged('api'), false);
+});
+
+test('physics result loading remains allowlisted and changed solver inputs notify the host', () => {
+  const { host, api, send, parameters } = fixture();
+  api.loadPhysicsResult = payload => {
+    parameters.entrySpeedMs = payload.problemSpec.entry_speed_ms;
+    parameters.rampCurve = payload.problemSpec.ramp_curve_m;
+    return { samples: payload.result.trajectory.length };
+  };
+  const payload = { problemSpec: { entry_speed_ms: 22.2, ramp_curve_m: [{ x: -25, y: 0 }, { x: -6, y: 2 }] }, result: { trajectory: [{ t: 0 }, { t: 1 }] } };
+  send('loadPhysicsResult', { payload });
+  assert.equal(messagesOf(host, 'roadster:result')[0].result.samples, 2);
+  assert.deepEqual(messagesOf(host, 'roadster:parameters-changed')[0].changed, ['entrySpeedMs', 'rampCurve']);
+});

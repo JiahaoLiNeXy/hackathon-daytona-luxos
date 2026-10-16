@@ -8,7 +8,7 @@ root = Path(__file__).resolve().parent.parent
 if not (root / 'dist/index.html').is_file():
     raise SystemExit('Missing dist/. Run npm run verify first.')
 files = []
-for directory in ('src', 'public', 'dist', 'docs', 'examples', 'references', 'scripts', 'tests'):
+for directory in ('src', 'server', 'public', 'dist', 'docs', 'examples', 'references', 'scripts', 'tests'):
     files.extend(p for p in (root / directory).rglob('*') if p.is_file() and p.name != '.DS_Store' and '__pycache__' not in p.parts)
 files.extend(root / name for name in ('README.md', 'index.html', 'package.json', 'package-lock.json', 'vite.config.js'))
 manifest = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(files)}
