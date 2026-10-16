@@ -16,6 +16,7 @@ import re
 from typing import Optional
 
 from car_spec_lookup import CarSpecLookup
+from tracing import traced
 from schemas import (
     Curve,
     ExtractionOutput,
@@ -34,10 +35,15 @@ DEFAULT_ENTRY_SPEED_MS = 15.0       # ~34 mph
 DEFAULT_MASS_KG = 1300.0            # generic sports car
 DEFAULT_DOWNFORCE_N = 3000.0
 
-# Stand-in for an anchorbrowser lookup / real spec DB. Keyed by lowercase
-# substring match against mentioned_entities.
+# Pre-cached specs for entities we expect to show up live during the demo,
+# so the slow (~30-45s) anchorbrowser lookup never has to run on stage.
+# Keyed by lowercase substring match against mentioned_entities. Live
+# lookup (car_spec_lookup.py) still runs for anything not listed here.
 KNOWN_SPECS: dict[str, dict[str, float]] = {
     "tesla roadster": {"mass_kg": 1300.0, "downforce_capability_n": 9000.0},
+    # 992-generation Carrera, approx. DIN curb weight. downforce_capability_n
+    # isn't a published spec for this car -- reuses the generic POC default.
+    "porsche 911": {"mass_kg": 1430.0, "downforce_capability_n": DEFAULT_DOWNFORCE_N},
 }
 
 SPEED_UNIT_TO_MS = {
@@ -57,6 +63,8 @@ class ModelingAgent:
     def __init__(self, car_spec_lookup: Optional[CarSpecLookup] = None):
         self.car_spec_lookup = car_spec_lookup or CarSpecLookup()
 
+    @traced("Modeling Agent", "AGENT", inputs=("extraction", "memory"),
+            attributes={"implementation": "deterministic_heuristics"})
     def run(
         self,
         extraction: ExtractionOutput,
@@ -116,6 +124,7 @@ class ModelingAgent:
 
     # ---- scale resolution ----------------------------------------------
 
+    @traced("Resolve scale", "CHAIN", inputs=("extraction",))
     def _resolve_scale(self, extraction: ExtractionOutput) -> tuple[float, str]:
         grid = extraction.sketch.grid_detected
         legend_m = self._parse_legend_meters(
@@ -143,6 +152,7 @@ class ModelingAgent:
         ys = [p[1] for p in curve.points_px]
         return max(ys) - min(ys)
 
+    @traced("Classify ramp and ground", "CHAIN", inputs=("curves",))
     def _classify_curves(
         self, curves: list[Curve]
     ) -> tuple[Optional[Curve], Optional[Curve]]:
@@ -167,6 +177,7 @@ class ModelingAgent:
 
     # ---- ground profile ---------------------------------------------------
 
+    @traced("Build ground profile", "CHAIN", inputs=("ground_px", "ramp_exit_m", "base_px", "scale"))
     def _build_ground_profile(
         self,
         ground_px: Optional[Curve],
@@ -211,6 +222,7 @@ class ModelingAgent:
                 return q.value * SPEED_UNIT_TO_MS[unit], "spoken"
         return DEFAULT_ENTRY_SPEED_MS, "assumed_default"
 
+    @traced("Resolve vehicle specs", "CHAIN", inputs=("entities", "memory"))
     def _resolve_car_specs(
         self, entities: list[str], memory: Optional[dict[str, float]]
     ) -> tuple[float, str, float, str]:

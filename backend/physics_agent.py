@@ -1,18 +1,16 @@
 """Physics Agent — see docs/physics-agent-spec.md.
 
-For the POC, the "generate solver code" step produces a fixed template
-rather than an LLM-authored script each time — same documented shortcut as
-the Modeling Agent's heuristic-only curve classification. The behavior the
-spec actually cares about (execute agent-owned code in an isolated sandbox,
-not a hardcoded in-process function call) is real: the template below is
-written to disk and run as its own OS process via the `CodeExecutor`
-abstraction, which swaps to a real Daytona sandbox once that's wired in.
+The solver is a predefined Python script for this ramp/projectile scenario.
+It is executed via the CodeExecutor abstraction: a local subprocess during
+development, or a real Daytona sandbox when configured. No LLM code
+generation is needed for this scenario.
 """
 from __future__ import annotations
 
 import math
 
 from code_executor import CodeExecutionError, CodeExecutor, default_executor
+from tracing import traced
 from schemas import (
     PhysicsError,
     PhysicsExecution,
@@ -172,6 +170,8 @@ class PhysicsAgent:
     def __init__(self, executor: CodeExecutor | None = None):
         self.executor = executor or default_executor()
 
+    @traced("Physics Agent", "AGENT", inputs=("problem_spec",),
+            attributes={"physics.solver": "predefined_ramp_projectile", "implementation": "fixed_template"})
     def run(self, problem_spec: ProblemSpec) -> PhysicsResult:
         validation_error = self._validate(problem_spec)
         if validation_error:
@@ -202,6 +202,7 @@ class PhysicsAgent:
         )
 
     @staticmethod
+    @traced("Validate physics input", "CHAIN", inputs=("spec",))
     def _validate(spec: ProblemSpec) -> PhysicsError | None:
         if len(spec.ramp_curve_m) < 2:
             return PhysicsError(code="invalid_input", message="ramp_curve_m needs >= 2 points")
@@ -212,6 +213,7 @@ class PhysicsAgent:
         return None
 
     @staticmethod
+    @traced("Check solver result", "CHAIN", inputs=("result",))
     def _sanity_check(result: dict) -> PhysicsError | None:
         trajectory = result.get("trajectory", [])
         if not trajectory:

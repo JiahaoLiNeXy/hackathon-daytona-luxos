@@ -9,6 +9,7 @@ except ImportError:
 
 from mock_extraction import mock_loop_scenario, mock_sparse_scenario
 from orchestrator import Orchestrator
+from tracing import flush_traces
 
 
 def main():
@@ -28,4 +29,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        flush_traces()

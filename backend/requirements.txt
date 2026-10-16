@@ -1,2 +1,5 @@
 daytona>=0.224.0
 python-dotenv>=1.0.0
+arize-otel>=0.11.0,<1
+opentelemetry-api>=1.30.0,<2
+opentelemetry-sdk>=1.30.0,<2

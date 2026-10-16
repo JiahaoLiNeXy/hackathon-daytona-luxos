@@ -7,26 +7,32 @@ documented gap left in the chain; Modeling and Physics are both real now.
 from __future__ import annotations
 
 from typing import Optional
+from uuid import uuid4
 
 from modeling_agent import ModelingAgent
 from physics_agent import PhysicsAgent
 from schemas import ExtractionOutput, ModelingResult, PhysicsError, PhysicsResult, ProblemSpec
+from tracing import configure_tracing, current_trace_id, traced
 
 
 class CaptureResult:
     def __init__(self, modeling: ModelingResult, physics: Optional[PhysicsResult]):
         self.modeling = modeling
         self.physics = physics
+        self.trace_id = current_trace_id()
 
     def to_dict(self) -> dict:
         return {
             "modeling": self.modeling.to_dict(),
             "physics": self.physics.to_dict() if self.physics else None,
+            "trace_id": self.trace_id,
         }
 
 
 class Orchestrator:
     def __init__(self):
+        configure_tracing()
+        self.session_id = uuid4().hex
         self.modeling_agent = ModelingAgent()
         self.physics_agent = PhysicsAgent()
         # V0 in-memory state, single session (see docs/orchestrator-spec.md)
@@ -34,10 +40,12 @@ class Orchestrator:
         self.sources = None
         self.last_result = None
 
+    @traced("Process capture", "CHAIN", inputs=("extraction", "memory"))
     def process_capture(
         self, extraction: ExtractionOutput, memory: Optional[dict] = None
     ) -> CaptureResult:
         """Full-chain trigger, mocking the Extraction stage for now."""
+        extraction = self._accept_extraction(extraction)
         modeling_result = self.modeling_agent.run(extraction, memory=memory)
         if modeling_result.status != "ok":
             return CaptureResult(modeling=modeling_result, physics=None)
@@ -49,6 +57,13 @@ class Orchestrator:
         self.last_result = physics_result
         return CaptureResult(modeling=modeling_result, physics=physics_result)
 
+    @traced("Extraction (precomputed input)", "AGENT", inputs=("extraction",),
+            attributes={"implementation": "precomputed", "extraction.is_mock": True})
+    def _accept_extraction(self, extraction: ExtractionOutput) -> ExtractionOutput:
+        """Visible handoff only; no image or speech processing is performed yet."""
+        return extraction
+
+    @traced("Update speed", "CHAIN", inputs=("new_speed_ms",))
     def update_speed(self, new_speed_ms: float) -> PhysicsResult:
         """Fast path: re-run only the Physics Agent (see orchestrator-spec.md
         for why Extraction/Modeling are never re-triggered here)."""

@@ -20,6 +20,7 @@ import os
 from typing import Optional
 
 from code_executor import CodeExecutionError, CodeExecutor, default_executor
+from tracing import traced
 
 LOOKUP_CODE = r"""
 import json
@@ -110,6 +111,7 @@ class CarSpecLookup:
     def __init__(self, executor: Optional[CodeExecutor] = None):
         self.executor = executor or default_executor()
 
+    @traced("Anchor Browser car mass lookup", "TOOL", inputs=("entity", "timeout_s"))
     def lookup_mass_kg(self, entity: str, timeout_s: float = 90.0) -> tuple[Optional[float], Optional[str]]:
         """Returns (mass_kg, source_url), or (None, None) if unavailable/not
         configured/failed. Never raises — a flaky lookup must never break

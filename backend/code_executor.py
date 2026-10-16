@@ -22,6 +22,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+from tracing import traced
 
 
 class CodeExecutionError(Exception):
@@ -53,6 +54,8 @@ class LocalSubprocessExecutor(CodeExecutor):
     process isolation + a timeout. Good enough for local POC testing.
     """
 
+    @traced("Local subprocess execution", "TOOL", inputs=("code", "input_data", "timeout_s"),
+            attributes={"execution.backend": "local_subprocess"})
     def run(
         self,
         code: str,
@@ -109,6 +112,8 @@ class DaytonaExecutor(CodeExecutor):
 
         self._daytona = Daytona()
 
+    @traced("Daytona sandbox execution", "TOOL", inputs=("code", "input_data", "timeout_s"),
+            attributes={"execution.backend": "daytona"})
     def run(
         self,
         code: str,
