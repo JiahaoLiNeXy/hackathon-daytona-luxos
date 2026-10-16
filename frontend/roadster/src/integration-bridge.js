@@ -4,6 +4,7 @@ export const INTEGRATION_COMMANDS = Object.freeze([
   'setWall', 'reset', 'setView', 'getState', 'showModule', 'hideModule',
   'moveModule', 'setPlaybackRate', 'getReadyState',
   'setRampCurve', 'loadPhysicsResult', 'runTrial', 'adjustRamp', 'compare', 'setEntrySpeed',
+  'setVoiceState', 'runVoiceCommand',
 ]);
 
 const parameterCommands = new Set(['setVehicleScale', 'setRampHeight', 'setWall', 'setRampCurve', 'loadPhysicsResult', 'setEntrySpeed']);

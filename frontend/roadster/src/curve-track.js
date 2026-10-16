@@ -4,30 +4,30 @@ const DEFAULTS = { width: 5.6, thickness: 0.28 };
 const MAX_POINTS = 50_000;
 const MAX_FRAME_STATIONS = 13;
 
-const invalid = (message) => { throw new Error(`跑道曲线格式错误：${message}`); };
+const invalid = (message) => { throw new Error(`Invalid ramp curve: ${message}`); };
 
 /** Validate the source polyline and return an independent, unshifted copy in metres. */
 export function validateRampCurve(rampCurve) {
   if (!Array.isArray(rampCurve) || rampCurve.length < 2 || rampCurve.length > MAX_POINTS) {
-    invalid('ramp_curve_m 必须包含 2 至 50000 个点');
+    invalid('ramp_curve_m must contain 2 to 50000 points');
   }
   const copy = [];
   for (let i = 0; i < rampCurve.length; i++) {
     const point = rampCurve[i];
     if (!point || typeof point !== 'object' || Array.isArray(point)
       || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
-      invalid(`ramp_curve_m[${i}] 的 x、y 必须是有限数字`);
+      invalid(`ramp_curve_m[${i}].x and .y must be finite numbers`);
     }
     if (![point.x, point.y].every((value) => Number.isFinite(Math.fround(value)))) {
-      invalid(`ramp_curve_m[${i}] 超出几何渲染精度范围`);
+      invalid(`ramp_curve_m[${i}] exceeds rendering precision`);
     }
     if (i) {
       const previous = copy[i - 1];
       if (point.x === previous.x && point.y === previous.y) {
-        invalid(`ramp_curve_m[${i - 1}] 与 [${i}] 连续重复，构成退化段`);
+        invalid(`ramp_curve_m[${i - 1}] and [${i}] are consecutive duplicates and form a degenerate segment`);
       }
       if (Math.fround(point.x) === Math.fround(previous.x) && Math.fround(point.y) === Math.fround(previous.y)) {
-        invalid(`ramp_curve_m[${i - 1}] 与 [${i}] 在几何渲染精度下构成退化段`);
+        invalid(`ramp_curve_m[${i - 1}] and [${i}] form a degenerate segment at rendering precision`);
       }
     }
     copy.push({ x: point.x, y: point.y });
@@ -58,7 +58,7 @@ function framesFor(curve) {
 
 function geometry(vertices, indices) {
   if (!vertices.every((value) => Number.isFinite(Math.fround(value)))) {
-    invalid('尺寸与坐标组合超出几何渲染精度范围');
+    invalid('Combined dimensions and coordinates exceed rendering precision');
   }
   const result = new THREE.BufferGeometry();
   result.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
@@ -147,11 +147,11 @@ function addBeam(group, name, a, b, radius, material) {
 /** Build the solid reference-style deck along the supplied physics polyline. */
 export function createCurveTrack(rampCurve, options = {}) {
   const curve = validateRampCurve(rampCurve);
-  if (!options || typeof options !== 'object' || Array.isArray(options)) invalid('options 必须是对象');
+  if (!options || typeof options !== 'object' || Array.isArray(options)) invalid('options must be an object');
   const { width, thickness } = { ...DEFAULTS, ...options };
   for (const [key, value] of Object.entries({ width, thickness })) {
     if (!Number.isFinite(value) || !Number.isFinite(Math.fround(value)) || Math.fround(value) <= 0) {
-      invalid(`${key} 必须是可渲染的正有限数字`);
+      invalid(`${key} must be a renderable positive finite number`);
     }
   }
   const frames = framesFor(curve);

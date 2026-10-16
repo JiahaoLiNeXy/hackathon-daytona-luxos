@@ -158,10 +158,10 @@ test('rejects malformed, nonfinite, duplicate, and rendering-degenerate input wi
     [{ x: 1e20, y: 2 }, { x: 1e20 + 1e6, y: 2 }],
     [{ x: 0, y: 0 }, { x: 1e300, y: 2 }],
     new Array(50_001),
-  ]) assert.throws(() => validateRampCurve(input), /跑道曲线格式错误/);
+  ]) assert.throws(() => validateRampCurve(input), /Invalid ramp curve/);
   assert.deepEqual(validateRampCurve(curve()), curve());
   for (const options of [null, [], { width: 0 }, { width: Infinity }, { thickness: -1 }, { thickness: '1' }, { thickness: 1e-300 }]) {
-    assert.throws(() => createCurveTrack(curve(), options), /跑道曲线格式错误/);
+    assert.throws(() => createCurveTrack(curve(), options), /Invalid ramp curve/);
   }
 });
 

@@ -6,22 +6,22 @@ const POSITION_KEYS = ['x', 'y', 'z'];
 const QUATERNION_KEYS = ['qx', 'qy', 'qz', 'qw'];
 const Y_AXIS = new Vector3(0, 1, 0);
 const Z_AXIS = new Vector3(0, 0, 1);
-const INFERRED_ORIENTATION_WARNING = '未提供姿态：已按路径切线推导航向和俯仰，不包含侧倾，也不能还原真实车辆姿态。';
+const INFERRED_ORIENTATION_WARNING = 'Orientation omitted: heading and pitch follow the path tangent. Roll is not included, and actual vehicle orientation cannot be recovered.';
 
 function fail(message) {
-  throw new Error(`轨迹格式错误：${message}`);
+  throw new Error(`Invalid trajectory: ${message}`);
 }
 
 function finiteNumber(value, name) {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
-    fail(`${name} 必须是有限数字。`);
+    fail(`${name} must be a finite number.`);
   }
   return value;
 }
 
 function numericArray(value, length, name) {
   if (!Array.isArray(value) || value.length !== length) {
-    fail(`${name} 必须包含 ${length} 个数字。`);
+    fail(`${name} must contain ${length} numbers.`);
   }
   return Array.from(value, (component, index) => finiteNumber(component, `${name}[${index}]`));
 }
@@ -30,7 +30,7 @@ function normalizedQuaternion(value, name) {
   const components = numericArray(value, 4, name);
   // Scaling first avoids overflow and underflow for otherwise valid finite input.
   const scale = Math.max(...components.map(Math.abs));
-  if (scale === 0) fail(`${name} 不能是零四元数。`);
+  if (scale === 0) fail(`${name} must not be a zero quaternion.`);
   const scaled = components.map((component) => component / scale);
   const length = Math.hypot(...scaled);
   return scaled.map((component) => component / length);
@@ -80,26 +80,26 @@ function inferOrientations(samples) {
 
 /** Normalize imported metre/Y-up samples without moving their spatial origin. */
 export function normalizeTrajectory(data) {
-  if (!data || typeof data !== 'object' || Array.isArray(data)) fail('JSON 顶层必须是对象。');
-  if (data.version !== undefined && data.version !== 1) fail('仅支持 version: 1。');
-  if (data.units !== undefined && data.units !== 'm') fail('units 必须为 "m"，请先转换成米。');
-  if (data.upAxis !== undefined && data.upAxis !== 'Y') fail('upAxis 必须为 "Y"，请先转换坐标轴。');
-  if (!Array.isArray(data.samples) || data.samples.length < 2) fail('至少需要 2 个采样点。');
-  if (data.samples.length > MAX_SAMPLES) fail(`采样点不能超过 ${MAX_SAMPLES} 个。`);
-  if (data.label !== undefined && typeof data.label !== 'string') fail('label 必须是字符串。');
+  if (!data || typeof data !== 'object' || Array.isArray(data)) fail('The top-level JSON value must be an object.');
+  if (data.version !== undefined && data.version !== 1) fail('Only version: 1 is supported.');
+  if (data.units !== undefined && data.units !== 'm') fail('units must be "m". Convert to meters first.');
+  if (data.upAxis !== undefined && data.upAxis !== 'Y') fail('upAxis must be "Y". Convert the axes first.');
+  if (!Array.isArray(data.samples) || data.samples.length < 2) fail('At least 2 samples are required.');
+  if (data.samples.length > MAX_SAMPLES) fail(`No more than ${MAX_SAMPLES} samples are allowed.`);
+  if (data.label !== undefined && typeof data.label !== 'string') fail('label must be a string.');
 
   let previousTime = -Infinity;
   let quaternionCount = 0;
   const samples = Array.from(data.samples, (sample, index) => {
-    const name = `第 ${index + 1} 个采样点`;
-    if (!sample || typeof sample !== 'object' || Array.isArray(sample)) fail(`${name} 必须是对象。`);
-    const t = finiteNumber(sample.t, `${name}的 t`);
-    if (t <= previousTime) fail(`${name}的 t 必须严格递增。`);
+    const name = `Sample ${index + 1}`;
+    if (!sample || typeof sample !== 'object' || Array.isArray(sample)) fail(`${name} must be an object.`);
+    const t = finiteNumber(sample.t, `${name}.t`);
+    if (t <= previousTime) fail(`${name}.t must be strictly increasing.`);
     previousTime = t;
     const position = numericArray(
       sample.position === undefined ? POSITION_KEYS.map((key) => sample[key]) : sample.position,
       3,
-      `${name}的 position`,
+      `${name}.position`,
     );
     const hasQuaternion = sample.quaternion !== undefined || QUATERNION_KEYS.some((key) => sample[key] !== undefined);
     let quaternion;
@@ -107,20 +107,20 @@ export function normalizeTrajectory(data) {
       quaternionCount += 1;
       quaternion = normalizedQuaternion(
         sample.quaternion === undefined ? QUATERNION_KEYS.map((key) => sample[key]) : sample.quaternion,
-        `${name}的 quaternion`,
+        `${name}.quaternion`,
       );
     }
     return { t, position, quaternion };
   });
   if (quaternionCount !== 0 && quaternionCount !== samples.length) {
-    fail('姿态必须在所有采样点完整提供，或在所有采样点省略。');
+    fail('Provide complete orientation for every sample or omit it from every sample.');
   }
 
   const timeOffset = samples[0].t;
   previousTime = -Infinity;
   for (const sample of samples) {
     sample.t -= timeOffset;
-    if (!Number.isFinite(sample.t) || sample.t <= previousTime) fail('时间跨度超出可表示精度。');
+    if (!Number.isFinite(sample.t) || sample.t <= previousTime) fail('Time span exceeds numeric precision.');
     previousTime = sample.t;
   }
   const warnings = [];
@@ -132,7 +132,7 @@ export function normalizeTrajectory(data) {
     samples,
     duration: samples[samples.length - 1].t,
     timeOffset,
-    label: data.label?.trim() || '导入轨迹',
+    label: data.label?.trim() || 'Imported path',
     warnings,
     source: 'imported',
   };
@@ -143,32 +143,32 @@ function csvCells(line, lineNumber) {
     const value = cell.trim();
     if (!value.includes('"')) return value;
     if (/^"[^"]*"$/.test(value)) return value.slice(1, -1).trim();
-    fail(`CSV 第 ${lineNumber} 行包含不支持的引号格式。`);
+    fail(`CSV line ${lineNumber} uses unsupported quoting.`);
   });
 }
 
 function parseCsv(text) {
   const lines = text.split(/\r\n|\n|\r/).map((line, index) => ({ line, lineNumber: index + 1 })).filter(({ line }) => line.trim());
-  if (lines.length < 3) fail('CSV 需要表头和至少 2 行数据。');
-  if (lines.length - 1 > MAX_SAMPLES) fail(`采样点不能超过 ${MAX_SAMPLES} 个。`);
+  if (lines.length < 3) fail('CSV requires a header and at least 2 data rows.');
+  if (lines.length - 1 > MAX_SAMPLES) fail(`No more than ${MAX_SAMPLES} samples are allowed.`);
   const headers = csvCells(lines[0].line, lines[0].lineNumber);
   const required = ['t', ...POSITION_KEYS];
   const allowed = [...required, ...QUATERNION_KEYS];
   if (new Set(headers).size !== headers.length || headers.some((header) => !allowed.includes(header))) {
-    fail('CSV 表头有重复或未知字段；支持 t,x,y,z,qx,qy,qz,qw。');
+    fail('CSV headers contain duplicate or unknown fields. Supported fields: t,x,y,z,qx,qy,qz,qw.');
   }
-  if (required.some((header) => !headers.includes(header))) fail('CSV 必须包含 t,x,y,z 表头。');
+  if (required.some((header) => !headers.includes(header))) fail('CSV must include t,x,y,z headers.');
   const quaternionColumns = QUATERNION_KEYS.filter((key) => headers.includes(key)).length;
-  if (quaternionColumns !== 0 && quaternionColumns !== 4) fail('CSV 四元数需要完整的 qx,qy,qz,qw 四列。');
+  if (quaternionColumns !== 0 && quaternionColumns !== 4) fail('CSV quaternion data requires all four qx,qy,qz,qw columns.');
   const numberPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
   return {
     samples: lines.slice(1).map(({ line, lineNumber }) => {
       const cells = csvCells(line, lineNumber);
-      if (cells.length !== headers.length) fail(`CSV 第 ${lineNumber} 行的列数与表头不一致。`);
+      if (cells.length !== headers.length) fail(`CSV line ${lineNumber} has a different column count from the header.`);
       return Object.fromEntries(headers.map((header, column) => {
         const value = cells[column];
-        if (!numberPattern.test(value)) fail(`CSV 第 ${lineNumber} 行的 ${header} 必须是数字，不能留空。`);
-        return [header, finiteNumber(Number(value), `CSV 第 ${lineNumber} 行的 ${header}`)];
+        if (!numberPattern.test(value)) fail(`CSV line ${lineNumber}, ${header} must be a number and cannot be blank.`);
+        return [header, finiteNumber(Number(value), `CSV line ${lineNumber}, ${header}`)];
       }));
     }),
   };
@@ -176,13 +176,13 @@ function parseCsv(text) {
 
 /** Parse UTF-8 JSON or numeric CSV. Parsing never starts playback. */
 export function parseTrajectory(text, filename = 'trajectory.json') {
-  if (typeof text !== 'string') fail('文件内容必须是文本。');
+  if (typeof text !== 'string') fail('File contents must be text.');
   if (text.length >= MAX_FILE_BYTES || new TextEncoder().encode(text).byteLength >= MAX_FILE_BYTES) {
-    fail('文件必须小于 10 MiB。');
+    fail('File must be smaller than 10 MiB.');
   }
   const content = text.replace(/^\uFEFF/, '').trim();
   const extension = String(filename).split('.').pop().toLowerCase();
-  if (!['json', 'csv'].includes(extension)) fail('只支持 .json 或 .csv 文件。');
+  if (!['json', 'csv'].includes(extension)) fail('Only .json or .csv files are supported.');
   let data;
   if (extension === 'csv') {
     data = parseCsv(content);
@@ -190,7 +190,7 @@ export function parseTrajectory(text, filename = 'trajectory.json') {
     try {
       data = JSON.parse(content);
     } catch {
-      fail('JSON 语法无效。');
+      fail('Invalid JSON syntax.');
     }
   }
   const trajectory = normalizeTrajectory(data);
@@ -200,7 +200,7 @@ export function parseTrajectory(text, filename = 'trajectory.json') {
 
 /** Position is linear; attitude uses normalized shortest-arc quaternion slerp. */
 export function sampleTrajectory(trajectory, t) {
-  finiteNumber(t, '播放时间');
+  finiteNumber(t, 'Playback time');
   const { samples } = trajectory;
   let low = 0;
   let high = samples.length - 1;

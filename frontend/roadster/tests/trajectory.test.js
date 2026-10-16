@@ -41,7 +41,7 @@ test('clamps both ends and chooses the correct nonuniform time interval', () => 
   nearVector(sampleTrajectory(trajectory, 99).position, [30, 0, 0]);
   nearVector(sampleTrajectory(trajectory, 1).position, [10, 0, 0]);
   nearVector(sampleTrajectory(trajectory, 3).position, [20, 0, 0]);
-  assert.throws(() => sampleTrajectory(trajectory, NaN), /有限数字/);
+  assert.throws(() => sampleTrajectory(trajectory, NaN), /finite number/);
 });
 
 test('normalizes quaternions, handles equivalent opposite signs, and preserves inversion', () => {
@@ -55,7 +55,7 @@ test('derives heading/pitch from the declared +X forward / +Y up / +Z right axes
   const direction = new Vector3(1, 0, 0).applyQuaternion(sampleTrajectory(trajectory, 0).quaternion);
   nearVector(direction, [1 / Math.sqrt(3), 1 / Math.sqrt(3), 1 / Math.sqrt(3)]);
   assert.equal(trajectory.warnings.length, 1);
-  assert.match(trajectory.warnings[0], /不包含侧倾/);
+  assert.match(trajectory.warnings[0], /Roll is not included/);
 });
 
 test('inferred headings remain finite through pauses, vertical motion, and exact reversals', () => {
@@ -92,14 +92,14 @@ test('rejects missing, nonfinite, nonnumeric, unordered, mixed, and malformed sa
     [point(0, [0, 0, 0]), point(1, [0, 0, 0], new Array(4))],
     [point(0, [0, 0, 0]), { t: 1, position: [1, 0, 0] }],
     [point(0, [0, 0, 0]), { t: 1, x: 1, y: 0, z: 0, qx: 1 }],
-  ]) assert.throws(() => normalizeTrajectory({ samples }), /轨迹格式错误/);
+  ]) assert.throws(() => normalizeTrajectory({ samples }), /Invalid trajectory/);
   assert.throws(() => normalizeTrajectory({ ...valid(), units: 'mm' }), /units/);
   assert.throws(() => normalizeTrajectory({ ...valid(), upAxis: 'Z' }), /upAxis/);
   assert.throws(() => normalizeTrajectory({ ...valid(), version: 2 }), /version/);
   assert.throws(() => normalizeTrajectory({ ...valid(), label: 12 }), /label/);
-  assert.throws(() => normalizeTrajectory(null), /顶层/);
-  assert.throws(() => normalizeTrajectory({ samples: new Array(2) }), /必须是对象/);
-  assert.throws(() => normalizeTrajectory({ samples: [point(-1e308, [0, 0, 0]), point(1e308, [0, 0, 0])] }), /时间跨度/);
+  assert.throws(() => normalizeTrajectory(null), /top-level/);
+  assert.throws(() => normalizeTrajectory({ samples: new Array(2) }), /must be an object/);
+  assert.throws(() => normalizeTrajectory({ samples: [point(-1e308, [0, 0, 0]), point(1e308, [0, 0, 0])] }), /Time span/);
 });
 
 test('enforces file and sample limits before accepting imported data', () => {
@@ -123,8 +123,8 @@ test('reads flat JSON, array JSON, BOM, labels, and explicit CSV attitude', () =
 });
 
 test('rejects malformed JSON/CSV and incomplete CSV orientation rather than silently coercing', () => {
-  assert.throws(() => parseTrajectory('{broken'), /JSON 语法/);
-  assert.throws(() => parseTrajectory('{}', 'file.txt'), /只支持/);
+  assert.throws(() => parseTrajectory('{broken'), /JSON syntax/);
+  assert.throws(() => parseTrajectory('{}', 'file.txt'), /Only/);
   for (const csv of [
     't,x,y,z\n0,0,0,0\n1,,0,0',
     't,x,y,z\n0,0,0,0\n1,Infinity,0,0',
@@ -134,7 +134,7 @@ test('rejects malformed JSON/CSV and incomplete CSV orientation rather than sile
     't,x,y,z,qx,qy,qz,qw\n0,0,0,0,0,0,0,1\n1,1,0,0,,,,',
     't,x,x,z\n0,0,0,0\n1,1,0,0',
     't,x,y,z,heading\n0,0,0,0,0\n1,1,0,0,0',
-  ]) assert.throws(() => parseTrajectory(csv, 'invalid.csv'), /轨迹格式错误/);
+  ]) assert.throws(() => parseTrajectory(csv, 'invalid.csv'), /Invalid trajectory/);
 });
 
 test('bundled examples import and describe the same synthetic motion', async () => {
