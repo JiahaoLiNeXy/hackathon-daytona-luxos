@@ -6,7 +6,7 @@
 
 [Roadster UI overlay handoff](frontend/roadster/README.md) · [Integration API](frontend/roadster/docs/INTEGRATION.md)
 
-[Download the Roadster handoff ZIP](deliverables/roadster-ui-handoff.zip) — built app, source, four projected UI modules, models, local wall-avoidance solver and calling example. Requires Node.js 18+ and Python 3.9+ for live calculation; start with `npm ci && npm run preview` from the extracted package. See the integration guide to load the transparent UI into the desktop overlay over the phone/FaceTime view.
+[Download the Roadster handoff ZIP](deliverables/roadster-ui-handoff.zip) — built app, source, four projected control modules, optional voice captions and execution feedback, models, local wall-avoidance solver and calling examples. Requires Node.js 18+ and Python 3.9+ for live calculation; start with `npm ci && npm run preview` from the extracted package. See the integration guide to load the transparent UI into the desktop overlay over the phone/FaceTime view.
 
 ## Capture (Phase 1, step 1)
 

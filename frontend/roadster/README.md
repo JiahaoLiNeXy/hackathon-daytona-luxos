@@ -1,6 +1,6 @@
 # Roadster / Projected Modules
 
-Four movable, transparent modules on the original desk photo: Model, Wall experiment, Motion and Files. All controls and results stay inside the projected UI. The Roadster, original ramp assets and photo are preserved; dimensions are editable visual assumptions, not official CAD.
+Four movable, transparent control modules on the original desk photo: Model, Wall experiment, Motion and Files. An optional voice panel displays recognized English speech, the current action and its actual result. All controls and results stay inside the projected UI. The Roadster, original ramp assets and photo are preserved; dimensions are editable visual assumptions, not official CAD.
 
 ## Run
 
@@ -17,7 +17,7 @@ Open `http://127.0.0.1:4178/`. For the downloaded ZIP, run `npm ci && npm run pr
 
 ## Try the wall experiment
 
-Click **放墙 → 试跑 → 调整跑道 → 对比**. Drag the wall in the model or edit its position/height. The first run uses the current ramp; the car stops at the first conservative wall contact. Adjustment generates candidate ramps from the current inputs, runs the Physics Agent's fixed Python solver again, and checks the complete moving car envelope. Comparison overlays both paths in one coordinate system. Changed inputs invalidate results; a failed search reports no solution.
+Click **Add wall → Run → Adjust ramp → Compare**. Drag the wall in the model or edit its position/height. The first run uses the current ramp; the car stops at the first conservative wall contact. Adjustment generates candidate ramps from the current inputs, runs the Physics Agent's fixed Python solver again, and checks the complete moving car envelope. Comparison overlays both paths in one coordinate system. Changed inputs invalidate results; a failed search reports no solution.
 
 The default wall at X = −18 m, height = 3 m produces a visible before/after. Moving it to −15 m demonstrates a no-solution result in the bounded search because the returning flight can hit the wall. These are computed inputs, not selected playback fixtures.
 
@@ -27,9 +27,25 @@ The default wall at X = −18 m, height = 3 m produces a visible before/after. M
 
 [Integration guide](docs/INTEGRATION.md) · [Calling example](examples/connect-roadster.js)
 
-Use `/?embed=1` to remove the desk photo and place the transparent UI over the phone/FaceTime view with the existing `overlay/overlay.py`. Readiness events, parameter revisions, playback rate, direct calls and the same-origin message bridge remain available. The bridge also supports asynchronous `runTrial()` and `adjustRamp()` calls. Phone transport, speech intent routing and physical projection calibration remain the host application's responsibility.
+Use `/?embed=1` to remove the desk photo and place the transparent UI over the phone/FaceTime view with the existing `overlay/overlay.py`. Readiness events, parameter revisions, playback rate, direct calls and the same-origin message bridge remain available. The bridge also supports asynchronous `runTrial()` and `adjustRamp()` calls. The engineer owns the ElevenLabs microphone, conversation and intent routing, phone transport and physical projection calibration.
 
-The four stable module IDs are `scene-panel`, `edit-panel`, `motion-panel`, `assets-panel`. Titles drag, × closes, and the Model controls reopen modules. No outer debug toolbar is added.
+After the UI is ready, pass the actual recognized transcript and resolved action from the host's existing speech callback:
+
+```js
+async function onRecognizedCommand({ transcript, command, payload }) {
+  return window.roadsterSim.runVoiceCommand({ transcript, command, payload });
+}
+function onVoicePhase(phase, transcript = '', detail = '') {
+  return window.roadsterSim.setVoiceState({ phase, transcript, detail });
+}
+function onConversationEnded() {
+  return window.roadsterSim.setVoiceState({ phase: 'idle' });
+}
+```
+
+The optional panel shows **Working → Done / Needs adjustment / Error** from the awaited command and real solver result. `setVoiceState` accepts `idle`, `listening`, `thinking`, `speaking` and `error`; `idle` clears and hides the panel. `getState().voice` exposes `{phase, transcript, action, detail}`. These calls provide UI feedback; they do not capture audio or infer intent. See the [integration guide](docs/INTEGRATION.md) for complete browser dispatcher, ElevenLabs client-tool and pywebview callback examples.
+
+The four stable control module IDs are `scene-panel`, `edit-panel`, `motion-panel`, `assets-panel`; `voice-panel` is optional and appears when the host supplies feedback. Titles drag, × closes, and the Model controls reopen the control modules. Voice feedback stays on the same desktop.
 
 ## Models and data
 

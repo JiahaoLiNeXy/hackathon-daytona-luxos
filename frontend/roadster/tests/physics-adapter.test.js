@@ -46,8 +46,8 @@ test('maps raw COM coordinates without offsets, axis changes, or resampling', ()
   assert.equal(adapted.trajectory.samples.length, input.result.trajectory.length);
   assert.equal(adapted.trajectory.source, 'physics');
   assert.match(adapted.trajectory.label, /Physics Agent.*cleared/);
-  assert.match(adapted.warnings.join(' '), /不是物理求解的姿态/);
-  assert.match(adapted.warnings.join(' '), /质心.*不是轮胎接触面/);
+  assert.match(adapted.warnings.join(' '), /not a physically solved orientation/);
+  assert.match(adapted.warnings.join(' '), /center-of-mass.*does not solve tire-surface/);
   assert.deepEqual(adapted.trajectory.warnings, adapted.warnings);
 });
 
@@ -117,11 +117,11 @@ test('backend errors preserve code and message before validating successful-resu
 
 test('requires the caller to supply the problem geometry and rejects malformed status/error envelopes', () => {
   for (const input of [undefined, null, [], {}, { result: null }, { result: { status: 'pending' } }, { result: fixture().result }]) {
-    assert.throws(() => adaptPhysicsResult(input), /物理结果格式错误/);
+    assert.throws(() => adaptPhysicsResult(input), /Invalid physics result/);
   }
   const input = fixture();
   input.result.error = { code: 'invalid_input', message: 'Contradictory response' };
-  assert.throws(() => adaptPhysicsResult(input), /error 必须为空/);
+  assert.throws(() => adaptPhysicsResult(input), /error must be empty/);
 });
 
 test('rejects invalid sample fields, phases, counts, and nonincreasing or unrepresentable times', () => {
@@ -140,7 +140,7 @@ test('rejects invalid sample fields, phases, counts, and nonincreasing or unrepr
   for (const change of changes) {
     const input = fixture();
     change(input);
-    assert.throws(() => adaptPhysicsResult(input), /格式错误/);
+    assert.throws(() => adaptPhysicsResult(input), /Invalid .*: /);
   }
 });
 
@@ -165,7 +165,7 @@ test('requires finite input geometry, positive speed/mass, nonnegative downforce
   for (const change of changes) {
     const input = fixture();
     change(input);
-    assert.throws(() => adaptPhysicsResult(input), /物理结果格式错误/);
+    assert.throws(() => adaptPhysicsResult(input), /Invalid physics result/);
   }
   const input = fixture();
   input.problemSpec.downforce_capability_n = 0;
@@ -186,7 +186,7 @@ test('validates metrics and execution without coercing nonfinite values', () => 
   for (const change of changes) {
     const input = fixture();
     change(input);
-    assert.throws(() => adaptPhysicsResult(input), /物理结果格式错误/);
+    assert.throws(() => adaptPhysicsResult(input), /Invalid physics result/);
   }
 });
 
@@ -208,6 +208,6 @@ test('deep-copies supplied spec, metrics, and execution and never mutates input 
 
   input.result.trajectory[2].t = 8;
   const invalidOriginal = structuredClone(input);
-  assert.throws(() => adaptPhysicsResult(input), /严格递增/);
+  assert.throws(() => adaptPhysicsResult(input), /strictly increasing/);
   assert.deepEqual(input, invalidOriginal);
 });
