@@ -91,3 +91,58 @@ class ModelingResult:
             "sources": self.sources,
             "error": asdict(self.error) if self.error else None,
         }
+
+
+# ---- Physics Agent output ----------------------------------------------
+
+@dataclass
+class TrajectoryPoint:
+    t: float
+    x: float
+    y: float
+    vx: float
+    vy: float
+    phase: Literal["ramp", "flight"]
+
+
+@dataclass
+class PhysicsMetrics:
+    traction_ok: bool
+    max_required_downforce_n: float
+    launch_angle_deg: float
+    launch_speed_ms: float
+    hang_time_s: float
+    max_height_m: float
+    landing_x_m: float
+    outcome: Literal["cleared", "fell_short", "landed_normal", "lost_traction"]
+    margin_m: Optional[float] = None
+
+
+@dataclass
+class PhysicsExecution:
+    duration_ms: float
+    sandbox_id: str
+
+
+@dataclass
+class PhysicsError:
+    code: Literal["invalid_input", "sandbox_execution_failed", "result_sanity_check_failed"]
+    message: str
+
+
+@dataclass
+class PhysicsResult:
+    status: Literal["ok", "error"]
+    trajectory: list[TrajectoryPoint] = field(default_factory=list)
+    metrics: Optional[PhysicsMetrics] = None
+    execution: Optional[PhysicsExecution] = None
+    error: Optional[PhysicsError] = None
+
+    def to_dict(self) -> dict:
+        return {
+            "status": self.status,
+            "trajectory": [asdict(p) for p in self.trajectory],
+            "metrics": asdict(self.metrics) if self.metrics else None,
+            "execution": asdict(self.execution) if self.execution else None,
+            "error": asdict(self.error) if self.error else None,
+        }
